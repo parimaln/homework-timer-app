@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Homework Timer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #0f1115;
+        color: #e6e7eb;
+        padding: 16px;
+      }
+
+      .app {
+        width: min(520px, 100%);
+        background: #171a21;
+        border: 1px solid #2a2f3a;
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.35);
+      }
+
+      h1 {
+        margin: 0 0 18px;
+        text-align: center;
+        font-size: clamp(1.4rem, 2.7vw, 1.9rem);
+        font-weight: 600;
+      }
+
+      .controls {
+        display: grid;
+        gap: 12px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.92rem;
+        color: #c4c9d4;
+      }
+
+      input,
+      button {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid #343b48;
+        background: #11141b;
+        color: #f1f3f7;
+        padding: 11px 12px;
+        font-size: 1rem;
+      }
+
+      input:focus,
+      button:focus {
+        outline: 2px solid #4f8cff;
+        outline-offset: 1px;
+      }
+
+      button {
+        background: #2d6bf8;
+        border-color: #2d6bf8;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      button:hover {
+        background: #2560e4;
+      }
+
+      .timer {
+        margin-top: 20px;
+        border-top: 1px solid #2a2f3a;
+        padding-top: 16px;
+        text-align: center;
+      }
+
+      .countdown {
+        font-size: clamp(2rem, 6vw, 3rem);
+        letter-spacing: 0.04em;
+        font-variant-numeric: tabular-nums;
+        margin: 0;
+      }
+
+      .meta,
+      .status {
+        margin: 9px 0 0;
+        color: #aeb6c6;
+        font-size: 0.95rem;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      @media (max-width: 480px) {
+        .app {
+          padding: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <h1>Homework Timer</h1>
+
+      <section id="setup" class="controls">
+        <label for="totalMinutes">
+          Total Time (minutes)
+          <input id="totalMinutes" type="number" min="1" step="1" inputmode="numeric" required />
+        </label>
+
+        <label for="intervalMinutes">
+          Interval Reminder (minutes)
+          <input id="intervalMinutes" type="number" min="1" step="1" inputmode="numeric" required />
+        </label>
+
+        <button id="startButton" type="button">Play / Start</button>
+      </section>
+
+      <section id="timerSection" class="timer hidden" aria-live="polite">
+        <p id="countdown" class="countdown">00:00</p>
+        <p id="meta" class="meta"></p>
+      </section>
+
+      <p id="status" class="status"></p>
+    </main>
+
+    <script>
+      (() => {
+        const STORAGE_KEY = 'homeworkTimerState';
+
+        const setup = document.getElementById('setup');
+        const timerSection = document.getElementById('timerSection');
+        const totalMinutesInput = document.getElementById('totalMinutes');
+        const intervalMinutesInput = document.getElementById('intervalMinutes');
+        const startButton = document.getElementById('startButton');
+        const countdown = document.getElementById('countdown');
+        const meta = document.getElementById('meta');
+        const status = document.getElementById('status');
+
+        let timerState = null;
+        let tickHandle = null;
+
+        const toDisplay = (seconds) => {
+          const safeSeconds = Math.max(0, seconds);
+          const minutes = Math.floor(safeSeconds / 60);
+          const secs = safeSeconds % 60;
+          return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        };
+
+        const toMinutesText = (seconds) => {
+          const mins = Math.floor(seconds / 60);
+          const secs = seconds % 60;
+          return secs === 0 ? `${mins} min` : `${mins} min ${secs} sec`;
+        };
+
+        const saveState = () => {
+          if (!timerState) {
+            return;
+          }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(timerState));
+        };
+
+        const clearState = () => {
+          localStorage.removeItem(STORAGE_KEY);
+          timerState = null;
+        };
+
+        const playChime = (isFinal) => {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContextClass) {
+            return;
+          }
+
+          const audioContext = new AudioContextClass();
+          const base = audioContext.currentTime;
+          const tones = isFinal
+            ? [
+                { freq: 660, at: 0, length: 0.18 },
+                { freq: 880, at: 0.2, length: 0.24 },
+              ]
+            : [{ freq: 660, at: 0, length: 0.18 }];
+
+          tones.forEach((tone) => {
+            const oscillator = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = tone.freq;
+            gain.gain.setValueAtTime(0.0001, base + tone.at);
+            gain.gain.exponentialRampToValueAtTime(0.18, base + tone.at + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.0001, base + tone.at + tone.length);
+            oscillator.connect(gain);
+            gain.connect(audioContext.destination);
+            oscillator.start(base + tone.at);
+            oscillator.stop(base + tone.at + tone.length);
+          });
+
+          setTimeout(() => {
+            audioContext.close().catch(() => {});
+          }, 700);
+        };
+
+        const notify = (title, body, isFinal) => {
+          playChime(isFinal);
+
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification(title, { body });
+          }
+        };
+
+        const showSetup = () => {
+          setup.classList.remove('hidden');
+          timerSection.classList.add('hidden');
+        };
+
+        const showTimer = () => {
+          setup.classList.add('hidden');
+          timerSection.classList.remove('hidden');
+        };
+
+        const updateView = () => {
+          if (!timerState) {
+            return;
+          }
+          const now = Date.now();
+          const remainingSeconds = Math.max(0, Math.ceil((timerState.endTime - now) / 1000));
+          const elapsedSeconds = timerState.totalSeconds - remainingSeconds;
+
+          timerState.remainingSeconds = remainingSeconds;
+          countdown.textContent = toDisplay(remainingSeconds);
+          meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
+
+          if (remainingSeconds <= 0) {
+            notify('Homework timer complete', 'Time is up. Great work finishing your session!', true);
+            status.textContent = 'Session complete.';
+            clearInterval(tickHandle);
+            tickHandle = null;
+            clearState();
+            showSetup();
+            return;
+          }
+
+          const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
+          if (intervalCount > timerState.lastReminderCount) {
+            timerState.lastReminderCount = intervalCount;
+            notify(
+              'Homework timer reminder',
+              `${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`,
+              false
+            );
+            status.textContent = `Reminder: ${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
+          }
+
+          saveState();
+        };
+
+        const startTimer = (state) => {
+          timerState = state;
+          showTimer();
+          clearInterval(tickHandle);
+          updateView();
+          tickHandle = setInterval(updateView, 1000);
+        };
+
+        const restoreTimer = () => {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) {
+            showSetup();
+            return;
+          }
+
+          try {
+            const parsed = JSON.parse(raw);
+            if (
+              !parsed ||
+              typeof parsed.totalSeconds !== 'number' ||
+              typeof parsed.intervalSeconds !== 'number' ||
+              typeof parsed.endTime !== 'number' ||
+              typeof parsed.startTime !== 'number'
+            ) {
+              clearState();
+              showSetup();
+              return;
+            }
+
+            if (Date.now() >= parsed.endTime) {
+              clearState();
+              showSetup();
+              return;
+            }
+
+            parsed.lastReminderCount = Number(parsed.lastReminderCount) || 0;
+            parsed.remainingSeconds = Math.max(0, Math.ceil((parsed.endTime - Date.now()) / 1000));
+            status.textContent = 'Resumed running timer from previous session.';
+            startTimer(parsed);
+          } catch {
+            clearState();
+            showSetup();
+          }
+        };
+
+        startButton.addEventListener('click', async () => {
+          const totalMinutes = Number(totalMinutesInput.value);
+          const intervalMinutes = Number(intervalMinutesInput.value);
+
+          if (!Number.isFinite(totalMinutes) || !Number.isFinite(intervalMinutes) || totalMinutes <= 0 || intervalMinutes <= 0) {
+            status.textContent = 'Enter valid positive values for total time and interval.';
+            return;
+          }
+
+          if ('Notification' in window && Notification.permission === 'default') {
+            try {
+              await Notification.requestPermission();
+            } catch {
+              status.textContent = 'Notification permission prompt failed. Timer will still run with chime alerts.';
+            }
+          }
+
+          const totalSeconds = Math.round(totalMinutes * 60);
+          const intervalSeconds = Math.round(intervalMinutes * 60);
+          const now = Date.now();
+
+          const newState = {
+            totalSeconds,
+            intervalSeconds,
+            startTime: now,
+            endTime: now + totalSeconds * 1000,
+            remainingSeconds: totalSeconds,
+            lastReminderCount: 0,
+          };
+
+          status.textContent = 'Timer started.';
+          saveState(newState);
+          startTimer(newState);
+        });
+
+        restoreTimer();
+      })();
+    </script>
+  </body>
+</html>
