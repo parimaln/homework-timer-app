@@ -11,7 +11,7 @@ const DURATION_TOLERANCE_SECONDS = 1;
 let nextEventTimeout = null;
 
 const createNotificationTag = () =>
-  typeof crypto.randomUUID === 'function'
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? `homework-timer-${crypto.randomUUID()}`
     : `homework-timer-${Date.now()}-${Math.random()}`;
 
