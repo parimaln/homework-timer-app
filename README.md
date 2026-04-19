@@ -9,7 +9,9 @@ A plain HTML + JavaScript homework timer designed for GitHub Pages.
 - Pause/resume control with optional timed break support
 - Break length validation (max 10 minutes and never longer than remaining time)
 - Timer state persisted in `localStorage` and restored on refresh
-- Desktop notifications + audible chime on reminders and completion
+- Service worker powered background reminders/completion notifications when supported; after tab close, delivery is best-effort and browser-dependent rather than guaranteed
+- If a notification is shown, clicking it focuses an existing timer tab or opens the app
+- Desktop notifications + audible chime on reminders and completion while app is open
 - Timer state auto-cleared from `localStorage` when finished
 
 ## Run locally
