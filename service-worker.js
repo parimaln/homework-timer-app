@@ -77,7 +77,7 @@ const clearNextEventTimeout = () => {
 const showFreshNotification = async (title, options) => {
   const activeNotifications = await self.registration.getNotifications();
   activeNotifications
-    .filter((notification) => notification.data && notification.data.source === TIMER_NOTIFICATION_SOURCE)
+    .filter((notification) => notification.data?.source === TIMER_NOTIFICATION_SOURCE)
     .forEach((notification) => notification.close());
 
   await self.registration.showNotification(title, {
