@@ -84,6 +84,7 @@
         background: #3a1a1a;
         border-color: #6b2626;
         color: #f87171;
+        margin-top: 16px;
       }
 
       .btn-danger:hover {
@@ -143,7 +144,7 @@
       <section id="timerSection" class="timer hidden" aria-live="polite">
         <p id="countdown" class="countdown">00:00</p>
         <p id="meta" class="meta"></p>
-        <button id="resetButton" type="button" class="btn-danger" style="margin-top:16px">Stop / Reset</button>
+        <button id="resetButton" type="button" class="btn-danger">Stop / Reset</button>
       </section>
 
       <p id="status" class="status" aria-live="polite"></p>
@@ -284,6 +285,8 @@
               false
             );
             status.textContent = `Reminder: ${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
+            // Save only when lastReminderCount changes; remainingSeconds is
+            // always recomputed from endTime on restore so per-tick saves are unnecessary.
             saveState();
           }
         };
