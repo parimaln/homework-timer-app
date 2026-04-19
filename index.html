@@ -187,11 +187,19 @@
           if (!timerState) {
             return;
           }
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(timerState));
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(timerState));
+          } catch {
+            // Storage unavailable (e.g. private browsing quota) — continue in-memory only
+          }
         };
 
         const clearState = () => {
-          localStorage.removeItem(STORAGE_KEY);
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+          } catch {
+            // Storage unavailable — ignore
+          }
           timerState = null;
         };
 
@@ -301,7 +309,15 @@
         };
 
         const restoreTimer = () => {
-          const raw = localStorage.getItem(STORAGE_KEY);
+          let raw;
+          try {
+            raw = localStorage.getItem(STORAGE_KEY);
+          } catch {
+            // Storage unavailable — start fresh
+            showSetup();
+            return;
+          }
+
           if (!raw) {
             showSetup();
             return;

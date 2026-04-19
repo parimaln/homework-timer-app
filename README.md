@@ -11,7 +11,7 @@ A plain HTML + JavaScript homework timer designed for GitHub Pages.
 - Timer state auto-cleared from `localStorage` when finished
 
 ## Run locally
-Open `index.html` directly, or serve the folder as static files:
+Serve the folder as static files (required — desktop notifications and the Web Audio API need a secure context and will not work when `index.html` is opened directly from the filesystem via `file://`):
 
 ```bash
 python3 -m http.server 4173
