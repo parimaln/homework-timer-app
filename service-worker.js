@@ -68,6 +68,17 @@ const clearNextEventTimeout = () => {
   nextEventTimeout = null;
 };
 
+const showFreshNotification = async (title, options) => {
+  const activeNotifications = await self.registration.getNotifications();
+  activeNotifications.forEach((notification) => notification.close());
+
+  await self.registration.showNotification(title, {
+    ...options,
+    requireInteraction: true,
+    tag: `homework-timer-${Date.now()}`,
+  });
+};
+
 const scheduleNextEvent = async () => {
   clearNextEventTimeout();
   const timerState = await readTimerState();
@@ -92,20 +103,18 @@ const scheduleNextEvent = async () => {
 };
 
 const showCompletionNotification = async () => {
-  await self.registration.showNotification('Homework timer complete', {
+  await showFreshNotification('Homework timer complete', {
     body: 'Time is up. Great work finishing your session!',
     data: { url: getAppUrl() },
-    tag: 'homework-timer-complete',
-    renotify: true,
+    renotify: false,
   });
 };
 
 const showReminderNotification = async (elapsedSeconds, remainingSeconds) => {
-  await self.registration.showNotification('Homework timer reminder', {
+  await showFreshNotification('Homework timer reminder', {
     body: `${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`,
     data: { url: getAppUrl() },
-    tag: 'homework-timer-reminder',
-    renotify: true,
+    renotify: false,
   });
 };
 
