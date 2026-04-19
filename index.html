@@ -287,12 +287,36 @@
 
           try {
             const parsed = JSON.parse(raw);
+            const hasValidTotalSeconds =
+              Number.isFinite(parsed?.totalSeconds) &&
+              Number.isSafeInteger(parsed.totalSeconds) &&
+              parsed.totalSeconds > 0;
+            const hasValidIntervalSeconds =
+              Number.isFinite(parsed?.intervalSeconds) &&
+              Number.isSafeInteger(parsed.intervalSeconds) &&
+              parsed.intervalSeconds > 0;
+            const hasValidStartTime =
+              Number.isFinite(parsed?.startTime) &&
+              Number.isSafeInteger(parsed.startTime) &&
+              parsed.startTime > 0;
+            const hasValidEndTime =
+              Number.isFinite(parsed?.endTime) &&
+              Number.isSafeInteger(parsed.endTime) &&
+              parsed.endTime > 0;
+            const hasConsistentDuration =
+              hasValidTotalSeconds &&
+              hasValidStartTime &&
+              hasValidEndTime &&
+              parsed.endTime > parsed.startTime &&
+              parsed.endTime - parsed.startTime === parsed.totalSeconds * 1000;
+
             if (
               !parsed ||
-              typeof parsed.totalSeconds !== 'number' ||
-              typeof parsed.intervalSeconds !== 'number' ||
-              typeof parsed.endTime !== 'number' ||
-              typeof parsed.startTime !== 'number'
+              !hasValidTotalSeconds ||
+              !hasValidIntervalSeconds ||
+              !hasValidStartTime ||
+              !hasValidEndTime ||
+              !hasConsistentDuration
             ) {
               clearState();
               showSetup();
