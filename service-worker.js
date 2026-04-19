@@ -9,6 +9,7 @@ const MS_PER_SECOND = 1000;
 const DURATION_TOLERANCE_SECONDS = 1;
 
 let nextEventTimeout = null;
+let notificationSequence = 0;
 
 const toMinutesText = (seconds) => {
   const mins = Math.floor(seconds / 60);
@@ -75,8 +76,9 @@ const showFreshNotification = async (title, options) => {
   await self.registration.showNotification(title, {
     ...options,
     requireInteraction: true,
-    tag: `homework-timer-${Date.now()}`,
+    tag: `homework-timer-${Date.now()}-${notificationSequence}`,
   });
+  notificationSequence += 1;
 };
 
 const scheduleNextEvent = async () => {
