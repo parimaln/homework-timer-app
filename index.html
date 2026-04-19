@@ -180,6 +180,7 @@
     <script>
       (() => {
         const STORAGE_KEY = 'homeworkTimerState';
+        const MAX_BREAK_MINUTES = 10;
 
         const setup = document.getElementById('setup');
         const timerSection = document.getElementById('timerSection');
@@ -193,6 +194,7 @@
         const countdown = document.getElementById('countdown');
         const meta = document.getElementById('meta');
         const status = document.getElementById('status');
+        breakMinutesInput.max = String(MAX_BREAK_MINUTES);
 
         let timerState = null;
         let tickHandle = null;
@@ -546,12 +548,22 @@
           }
 
           const breakMinutes = Number(breakMinutesInput.value);
-          if (!Number.isInteger(breakMinutes) || breakMinutes <= 0) {
-            status.textContent = 'Enter a valid break length in whole minutes.';
+          if (!Number.isFinite(breakMinutes)) {
+            status.textContent = 'Enter a valid break length in minutes.';
             return;
           }
 
-          const maxBreakMinutes = Math.min(10, Math.floor(timerState.remainingSeconds / 60));
+          if (!Number.isInteger(breakMinutes)) {
+            status.textContent = 'Break length must be a whole number of minutes.';
+            return;
+          }
+
+          if (breakMinutes <= 0) {
+            status.textContent = 'Break length must be at least 1 minute.';
+            return;
+          }
+
+          const maxBreakMinutes = Math.min(MAX_BREAK_MINUTES, Math.floor(timerState.remainingSeconds / 60));
           if (maxBreakMinutes <= 0) {
             status.textContent = 'No break time available from the remaining timer.';
             return;
