@@ -91,11 +91,31 @@
         background: #4d2020;
       }
 
+      .btn-secondary {
+        background: #24314a;
+        border-color: #34486d;
+        color: #d5e4ff;
+      }
+
+      .btn-secondary:hover {
+        background: #2a3a58;
+      }
+
       .timer {
         margin-top: 20px;
         border-top: 1px solid #2a2f3a;
         padding-top: 16px;
         text-align: center;
+      }
+
+      .timer-actions {
+        margin-top: 16px;
+      }
+
+      .timer-actions,
+      .break-controls {
+        display: grid;
+        gap: 10px;
       }
 
       .countdown {
@@ -144,7 +164,26 @@
       <section id="timerSection" class="timer hidden" aria-live="polite">
         <p id="countdown" class="countdown">00:00</p>
         <p id="meta" class="meta"></p>
-        <button id="resetButton" type="button" class="btn-danger">Stop / Reset</button>
+        <div class="timer-actions">
+          <button id="pauseButton" type="button" class="btn-secondary">Pause</button>
+          <div class="break-controls">
+            <label for="breakMinutes">
+              Break Length (minutes)
+              <input
+                id="breakMinutes"
+                type="number"
+                min="1"
+                max="10"
+                step="1"
+                inputmode="numeric"
+                placeholder="1-10"
+                aria-label="Break Length (minutes)"
+              />
+            </label>
+            <button id="breakButton" type="button" class="btn-secondary">Start Break</button>
+          </div>
+          <button id="resetButton" type="button" class="btn-danger" style="margin-top: 0;">Stop / Reset</button>
+        </div>
       </section>
 
       <p id="status" class="status" aria-live="polite"></p>
@@ -153,12 +192,16 @@
     <script>
       (() => {
         const STORAGE_KEY = 'homeworkTimerState';
+        const MAX_BREAK_MINUTES = 10;
 
         const setup = document.getElementById('setup');
         const timerSection = document.getElementById('timerSection');
         const totalMinutesInput = document.getElementById('totalMinutes');
         const intervalMinutesInput = document.getElementById('intervalMinutes');
         const startButton = document.getElementById('startButton');
+        const pauseButton = document.getElementById('pauseButton');
+        const breakMinutesInput = document.getElementById('breakMinutes');
+        const breakButton = document.getElementById('breakButton');
         const resetButton = document.getElementById('resetButton');
         const countdown = document.getElementById('countdown');
         const meta = document.getElementById('meta');
@@ -262,11 +305,56 @@
           timerSection.classList.remove('hidden');
         };
 
+        const syncTicking = () => {
+          clearInterval(tickHandle);
+          tickHandle = null;
+          if (!timerState || (timerState.isPaused && !timerState.isBreakActive)) {
+            return;
+          }
+          tickHandle = setInterval(updateView, 1000);
+        };
+
         const updateView = () => {
           if (!timerState) {
             return;
           }
+
+          pauseButton.textContent = timerState.isPaused ? 'Resume' : 'Pause';
+          pauseButton.disabled = timerState.isBreakActive;
+          breakButton.disabled = !timerState.isPaused || timerState.isBreakActive;
+          breakMinutesInput.disabled = !timerState.isPaused || timerState.isBreakActive;
+
           const now = Date.now();
+
+          if (timerState.isBreakActive) {
+            const breakRemainingSeconds = Math.max(0, Math.ceil((timerState.breakEndTime - now) / 1000));
+            timerState.breakRemainingSeconds = breakRemainingSeconds;
+            countdown.textContent = toDisplay(breakRemainingSeconds);
+            meta.textContent = `On break: ${toMinutesText(breakRemainingSeconds)} • Homework remaining: ${toMinutesText(
+              timerState.remainingSeconds
+            )}`;
+
+            if (breakRemainingSeconds <= 0) {
+              timerState.isBreakActive = false;
+              timerState.breakEndTime = null;
+              timerState.breakTotalSeconds = 0;
+              timerState.breakRemainingSeconds = 0;
+              timerState.isPaused = false;
+              timerState.endTime = Date.now() + timerState.remainingSeconds * 1000;
+              status.textContent = 'Break complete. Timer resumed.';
+              saveState();
+              syncTicking();
+              updateView();
+            }
+            return;
+          }
+
+          if (timerState.isPaused) {
+            countdown.textContent = toDisplay(timerState.remainingSeconds);
+            meta.textContent = `Paused • Remaining: ${toMinutesText(timerState.remainingSeconds)}`;
+            return;
+          }
+
           const remainingSeconds = Math.max(0, Math.ceil((timerState.endTime - now) / 1000));
           const elapsedSeconds = timerState.totalSeconds - remainingSeconds;
 
@@ -301,11 +389,20 @@
 
         const startTimer = (state) => {
           timerState = state;
+          timerState.isPaused = Boolean(timerState.isPaused);
+          timerState.isBreakActive = Boolean(timerState.isBreakActive);
+          timerState.breakEndTime = typeof timerState.breakEndTime === 'number' ? timerState.breakEndTime : null;
+          timerState.breakTotalSeconds = Number.isInteger(timerState.breakTotalSeconds) ? timerState.breakTotalSeconds : 0;
+          timerState.breakRemainingSeconds = Number.isInteger(timerState.breakRemainingSeconds)
+            ? timerState.breakRemainingSeconds
+            : 0;
+          timerState.remainingSeconds = Number.isInteger(timerState.remainingSeconds)
+            ? timerState.remainingSeconds
+            : timerState.totalSeconds;
           saveState();
           showTimer();
-          clearInterval(tickHandle);
           updateView();
-          tickHandle = setInterval(updateView, 1000);
+          syncTicking();
         };
 
         const restoreTimer = () => {
@@ -329,7 +426,7 @@
               !parsed ||
               typeof parsed.totalSeconds !== 'number' ||
               typeof parsed.intervalSeconds !== 'number' ||
-              typeof parsed.endTime !== 'number' ||
+              (typeof parsed.endTime !== 'number' && !parsed.isPaused) ||
               typeof parsed.startTime !== 'number'
             ) {
               clearState();
@@ -337,7 +434,7 @@
               return;
             }
 
-            if (Date.now() >= parsed.endTime) {
+            if (!parsed.isPaused && Date.now() >= parsed.endTime) {
               clearState();
               showSetup();
               return;
@@ -346,8 +443,25 @@
             const restoredReminderCount = Number(parsed.lastReminderCount);
             parsed.lastReminderCount =
               Number.isInteger(restoredReminderCount) && restoredReminderCount >= 0 ? restoredReminderCount : 0;
-            parsed.remainingSeconds = Math.max(0, Math.ceil((parsed.endTime - Date.now()) / 1000));
-            status.textContent = 'Resumed running timer from previous session.';
+            parsed.remainingSeconds =
+              typeof parsed.remainingSeconds === 'number'
+                ? Math.max(0, Math.floor(parsed.remainingSeconds))
+                : Math.max(0, Math.ceil((parsed.endTime - Date.now()) / 1000));
+
+            if (parsed.isBreakActive && typeof parsed.breakEndTime === 'number' && Date.now() >= parsed.breakEndTime) {
+              parsed.isBreakActive = false;
+              parsed.breakEndTime = null;
+              parsed.breakTotalSeconds = 0;
+              parsed.breakRemainingSeconds = 0;
+              parsed.isPaused = false;
+              parsed.endTime = Date.now() + parsed.remainingSeconds * 1000;
+            }
+
+            status.textContent = parsed.isBreakActive
+              ? 'Restored break from previous session.'
+              : parsed.isPaused
+                ? 'Restored paused timer from previous session.'
+                : 'Resumed running timer from previous session.';
             startTimer(parsed);
           } catch {
             clearState();
@@ -405,10 +519,91 @@
             endTime: now + totalSeconds * 1000,
             remainingSeconds: totalSeconds,
             lastReminderCount: 0,
+            isPaused: false,
+            isBreakActive: false,
+            breakEndTime: null,
+            breakTotalSeconds: 0,
+            breakRemainingSeconds: 0,
           };
 
           status.textContent = 'Timer started.';
           startTimer(newState);
+        });
+
+        pauseButton.addEventListener('click', () => {
+          if (!timerState) {
+            return;
+          }
+
+          if (timerState.isBreakActive) {
+            status.textContent = 'Wait for the current break to end.';
+            return;
+          }
+
+          if (timerState.isPaused) {
+            timerState.isPaused = false;
+            timerState.endTime = Date.now() + timerState.remainingSeconds * 1000;
+            status.textContent = 'Timer resumed.';
+          } else {
+            timerState.remainingSeconds = Math.max(0, Math.ceil((timerState.endTime - Date.now()) / 1000));
+            timerState.isPaused = true;
+            timerState.endTime = null;
+            status.textContent = 'Timer paused.';
+          }
+
+          saveState();
+          updateView();
+          syncTicking();
+        });
+
+        breakButton.addEventListener('click', () => {
+          if (!timerState || !timerState.isPaused || timerState.isBreakActive) {
+            status.textContent = 'Pause the timer before starting a break.';
+            return;
+          }
+
+          const breakMinutesRaw = breakMinutesInput.value.trim();
+          if (!breakMinutesRaw) {
+            status.textContent = 'Enter a valid break length in minutes.';
+            return;
+          }
+
+          const breakMinutes = Number(breakMinutesRaw);
+          if (!Number.isFinite(breakMinutes)) {
+            status.textContent = 'Enter a valid break length in minutes.';
+            return;
+          }
+
+          if (!Number.isInteger(breakMinutes)) {
+            status.textContent = 'Break length must be a whole number of minutes.';
+            return;
+          }
+
+          if (breakMinutes <= 0) {
+            status.textContent = 'Break length must be at least 1 minute.';
+            return;
+          }
+
+          const maxBreakMinutes = Math.min(MAX_BREAK_MINUTES, Math.floor(timerState.remainingSeconds / 60));
+          if (maxBreakMinutes <= 0) {
+            status.textContent = 'No break time available from the remaining timer.';
+            return;
+          }
+
+          if (breakMinutes > maxBreakMinutes) {
+            status.textContent = `Break must be ${maxBreakMinutes} minute${maxBreakMinutes === 1 ? '' : 's'} or less.`;
+            return;
+          }
+
+          const breakSeconds = breakMinutes * 60;
+          timerState.isBreakActive = true;
+          timerState.breakTotalSeconds = breakSeconds;
+          timerState.breakRemainingSeconds = breakSeconds;
+          timerState.breakEndTime = Date.now() + breakSeconds * 1000;
+          status.textContent = `Break started for ${breakMinutes} minute${breakMinutes === 1 ? '' : 's'}.`;
+          saveState();
+          updateView();
+          syncTicking();
         });
 
         resetButton.addEventListener('click', () => {
