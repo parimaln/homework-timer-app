@@ -9,7 +9,11 @@ const MS_PER_SECOND = 1000;
 const DURATION_TOLERANCE_SECONDS = 1;
 
 let nextEventTimeout = null;
-let notificationSequence = 0;
+
+const createNotificationTag = () =>
+  typeof crypto.randomUUID === 'function'
+    ? `homework-timer-${crypto.randomUUID()}`
+    : `homework-timer-${Date.now()}-${Math.random()}`;
 
 const toMinutesText = (seconds) => {
   const mins = Math.floor(seconds / 60);
@@ -76,9 +80,8 @@ const showFreshNotification = async (title, options) => {
   await self.registration.showNotification(title, {
     ...options,
     requireInteraction: true,
-    tag: `homework-timer-${Date.now()}-${notificationSequence}`,
+    tag: createNotificationTag(),
   });
-  notificationSequence += 1;
 };
 
 const scheduleNextEvent = async () => {
