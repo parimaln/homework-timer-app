@@ -7,8 +7,14 @@ const TIMER_STATE_URL = '/__homework_timer_state__';
 const SCHEDULING_BUFFER_MS = 50;
 const MS_PER_SECOND = 1000;
 const DURATION_TOLERANCE_SECONDS = 1;
+const TIMER_NOTIFICATION_SOURCE = 'homework-timer';
 
 let nextEventTimeout = null;
+
+const createNotificationTag = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? `homework-timer-${crypto.randomUUID()}`
+    : `homework-timer-${Date.now()}-${Math.random()}`;
 
 const toMinutesText = (seconds) => {
   const mins = Math.floor(seconds / 60);
@@ -68,6 +74,23 @@ const clearNextEventTimeout = () => {
   nextEventTimeout = null;
 };
 
+const showFreshNotification = async (title, options) => {
+  const activeNotifications = await self.registration.getNotifications();
+  activeNotifications
+    .filter((notification) => notification.data?.source === TIMER_NOTIFICATION_SOURCE)
+    .forEach((notification) => notification.close());
+
+  await self.registration.showNotification(title, {
+    ...options,
+    data: {
+      ...options.data,
+      source: TIMER_NOTIFICATION_SOURCE,
+    },
+    requireInteraction: true,
+    tag: createNotificationTag(),
+  });
+};
+
 const scheduleNextEvent = async () => {
   clearNextEventTimeout();
   const timerState = await readTimerState();
@@ -92,20 +115,18 @@ const scheduleNextEvent = async () => {
 };
 
 const showCompletionNotification = async () => {
-  await self.registration.showNotification('Homework timer complete', {
+  await showFreshNotification('Homework timer complete', {
     body: 'Time is up. Great work finishing your session!',
     data: { url: getAppUrl() },
-    tag: 'homework-timer-complete',
-    renotify: true,
+    renotify: false,
   });
 };
 
 const showReminderNotification = async (elapsedSeconds, remainingSeconds) => {
-  await self.registration.showNotification('Homework timer reminder', {
+  await showFreshNotification('Homework timer reminder', {
     body: `${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`,
     data: { url: getAppUrl() },
-    tag: 'homework-timer-reminder',
-    renotify: true,
+    renotify: false,
   });
 };
 
