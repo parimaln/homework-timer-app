@@ -153,6 +153,7 @@
     <script>
       (() => {
         const STORAGE_KEY = 'homeworkTimerState';
+        const SERVICE_WORKER_PATH = './service-worker.js';
 
         const setup = document.getElementById('setup');
         const timerSection = document.getElementById('timerSection');
@@ -167,6 +168,47 @@
         let timerState = null;
         let tickHandle = null;
         let sharedAudioContext = null;
+        let serviceWorkerReady = Promise.resolve(null);
+
+        if ('serviceWorker' in navigator) {
+          serviceWorkerReady = navigator.serviceWorker
+            .register(SERVICE_WORKER_PATH)
+            .then(() => navigator.serviceWorker.ready)
+            .catch(() => null);
+
+          navigator.serviceWorker.addEventListener('message', (event) => {
+            const data = event.data;
+            if (!data || typeof data !== 'object') {
+              return;
+            }
+
+            if (data.type === 'TIMER_REMINDER') {
+              playChime(false);
+            }
+
+            if (data.type === 'TIMER_COMPLETE') {
+              if (timerState) {
+                playChime(true);
+                clearInterval(tickHandle);
+                tickHandle = null;
+                clearState();
+                showSetup();
+              }
+            }
+
+            if (data.type === 'TIMER_STATE_UPDATE' && timerState) {
+              const nextReminderCount = Number(data.lastReminderCount);
+              if (Number.isInteger(nextReminderCount) && nextReminderCount >= timerState.lastReminderCount) {
+                timerState.lastReminderCount = nextReminderCount;
+                saveState();
+              }
+            }
+
+            if (typeof data.statusMessage === 'string') {
+              status.textContent = data.statusMessage;
+            }
+          });
+        }
 
         const toDisplay = (seconds) => {
           const safeSeconds = Math.max(0, seconds);
@@ -201,6 +243,36 @@
             // Storage unavailable — ignore
           }
           timerState = null;
+        };
+
+        const postTimerStateToServiceWorker = (type) => {
+          if (!('serviceWorker' in navigator)) {
+            return;
+          }
+
+          serviceWorkerReady
+            .then((registration) => {
+              const targetWorker = (registration && registration.active) || navigator.serviceWorker.controller;
+              if (!targetWorker) {
+                return;
+              }
+
+              targetWorker.postMessage({
+                type,
+                timerState: timerState
+                  ? {
+                      totalSeconds: timerState.totalSeconds,
+                      intervalSeconds: timerState.intervalSeconds,
+                      startTime: timerState.startTime,
+                      endTime: timerState.endTime,
+                      lastReminderCount: timerState.lastReminderCount,
+                    }
+                  : null,
+              });
+            })
+            .catch(() => {
+              // Service worker unavailable — continue without background notifications
+            });
         };
 
         const playChime = (isFinal) => {
@@ -244,14 +316,6 @@
           }
         };
 
-        const notify = (title, body, isFinal) => {
-          playChime(isFinal);
-
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(title, { body });
-          }
-        };
-
         const showSetup = () => {
           setup.classList.remove('hidden');
           timerSection.classList.add('hidden');
@@ -275,27 +339,14 @@
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
 
           if (remainingSeconds <= 0) {
-            notify('Homework timer complete', 'Time is up. Great work finishing your session!', true);
+            playChime(true);
             status.textContent = 'Session complete.';
             clearInterval(tickHandle);
             tickHandle = null;
+            postTimerStateToServiceWorker('RESET_TIMER');
             clearState();
             showSetup();
             return;
-          }
-
-          const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
-          if (intervalCount > timerState.lastReminderCount) {
-            timerState.lastReminderCount = intervalCount;
-            notify(
-              'Homework timer reminder',
-              `${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`,
-              false
-            );
-            status.textContent = `Reminder: ${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
-            // Save only when lastReminderCount changes; remainingSeconds is
-            // always recomputed from endTime on restore so per-tick saves are unnecessary.
-            saveState();
           }
         };
 
@@ -306,6 +357,7 @@
           clearInterval(tickHandle);
           updateView();
           tickHandle = setInterval(updateView, 1000);
+          postTimerStateToServiceWorker('START_TIMER');
         };
 
         const restoreTimer = () => {
@@ -338,6 +390,7 @@
             }
 
             if (Date.now() >= parsed.endTime) {
+              postTimerStateToServiceWorker('RESET_TIMER');
               clearState();
               showSetup();
               return;
@@ -414,6 +467,7 @@
         resetButton.addEventListener('click', () => {
           clearInterval(tickHandle);
           tickHandle = null;
+          postTimerStateToServiceWorker('RESET_TIMER');
           clearState();
           status.textContent = 'Timer stopped.';
           showSetup();

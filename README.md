@@ -7,7 +7,9 @@ A plain HTML + JavaScript homework timer designed for GitHub Pages.
 - Total time + reminder interval inputs
 - Live countdown with elapsed/remaining status
 - Timer state persisted in `localStorage` and restored on refresh
-- Desktop notifications + audible chime on reminders and completion
+- Service worker powered background reminders/completion notifications (even after tab close)
+- Clicking a notification focuses an existing timer tab or opens the app
+- Desktop notifications + audible chime on reminders and completion while app is open
 - Timer state auto-cleared from `localStorage` when finished
 
 ## Run locally
