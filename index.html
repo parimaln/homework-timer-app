@@ -357,6 +357,10 @@
             return;
           }
 
+          if (intervalMinutes > totalMinutes) {
+            status.textContent = 'Reminder interval must be less than or equal to the total time.';
+            return;
+          }
           if ('Notification' in window && Notification.permission === 'default') {
             try {
               await Notification.requestPermission();
