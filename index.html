@@ -276,6 +276,17 @@
           return secs === 0 ? `${mins} ${minuteLabel}` : `${mins} ${minuteLabel} ${secs} ${secondLabel}`;
         };
 
+        const showDesktopNotification = (title, body) => {
+          if (!('Notification' in window) || Notification.permission !== 'granted') {
+            return;
+          }
+          try {
+            new Notification(title, { body });
+          } catch {
+            // Notification API unavailable in this context — continue silently
+          }
+        };
+
         const saveState = () => {
           if (!timerState) {
             return;
@@ -494,10 +505,13 @@
 
           try {
             const parsed = JSON.parse(raw);
+            let restoreStatusMessage = '';
             if (
               !parsed ||
               typeof parsed.totalSeconds !== 'number' ||
               typeof parsed.intervalSeconds !== 'number' ||
+              parsed.totalSeconds <= 0 ||
+              parsed.intervalSeconds <= 0 ||
               (typeof parsed.endTime !== 'number' && !parsed.isPaused) ||
               typeof parsed.startTime !== 'number'
             ) {
@@ -507,6 +521,11 @@
             }
 
             if (!parsed.isPaused && Date.now() >= parsed.endTime) {
+              status.textContent = 'Session complete while tab was closed.';
+              showDesktopNotification('Homework timer complete', 'Time is up. Great work finishing your session!');
+              if (document.visibilityState === 'visible') {
+                playChime(true);
+              }
               postTimerStateToServiceWorker('RESET_TIMER');
               clearState();
               showSetup();
@@ -517,9 +536,25 @@
             parsed.lastReminderCount =
               Number.isInteger(restoredReminderCount) && restoredReminderCount >= 0 ? restoredReminderCount : 0;
             parsed.remainingSeconds =
-              typeof parsed.remainingSeconds === 'number'
-                ? Math.max(0, Math.floor(parsed.remainingSeconds))
+              parsed.isPaused || typeof parsed.endTime !== 'number'
+                ? typeof parsed.remainingSeconds === 'number'
+                  ? Math.max(0, Math.floor(parsed.remainingSeconds))
+                  : parsed.totalSeconds
                 : Math.max(0, Math.ceil((parsed.endTime - Date.now()) / 1000));
+
+            if (!parsed.isPaused && parsed.intervalSeconds > 0) {
+              const elapsedSeconds = Math.max(0, parsed.totalSeconds - parsed.remainingSeconds);
+              const intervalCount = Math.floor(elapsedSeconds / parsed.intervalSeconds);
+              if (intervalCount > parsed.lastReminderCount) {
+                parsed.lastReminderCount = intervalCount;
+                const reminderBody = `${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(parsed.remainingSeconds)} remaining.`;
+                restoreStatusMessage = `Reminder: ${reminderBody}`;
+                showDesktopNotification('Homework timer reminder', reminderBody);
+                if (document.visibilityState === 'visible') {
+                  playChime(false);
+                }
+              }
+            }
 
             if (parsed.isBreakActive && typeof parsed.breakEndTime === 'number' && Date.now() >= parsed.breakEndTime) {
               parsed.isBreakActive = false;
@@ -530,11 +565,13 @@
               parsed.endTime = Date.now() + parsed.remainingSeconds * 1000;
             }
 
-            status.textContent = parsed.isBreakActive
-              ? 'Restored break from previous session.'
-              : parsed.isPaused
-                ? 'Restored paused timer from previous session.'
-                : 'Resumed running timer from previous session.';
+            status.textContent =
+              restoreStatusMessage ||
+              (parsed.isBreakActive
+                ? 'Restored break from previous session.'
+                : parsed.isPaused
+                  ? 'Restored paused timer from previous session.'
+                  : 'Resumed running timer from previous session.');
             startTimer(parsed);
           } catch {
             clearState();
