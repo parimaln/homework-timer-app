@@ -166,7 +166,16 @@
           <div class="break-controls">
             <label for="breakMinutes">
               Break Length (minutes)
-              <input id="breakMinutes" type="number" min="1" max="10" step="1" inputmode="numeric" placeholder="1-10" />
+              <input
+                id="breakMinutes"
+                type="number"
+                min="1"
+                max="10"
+                step="1"
+                inputmode="numeric"
+                placeholder="1-10"
+                aria-label="Break Length (minutes)"
+              />
             </label>
             <button id="breakButton" type="button" class="btn-secondary">Start Break</button>
           </div>
@@ -194,7 +203,6 @@
         const countdown = document.getElementById('countdown');
         const meta = document.getElementById('meta');
         const status = document.getElementById('status');
-        breakMinutesInput.max = String(MAX_BREAK_MINUTES);
 
         let timerState = null;
         let tickHandle = null;
@@ -547,7 +555,13 @@
             return;
           }
 
-          const breakMinutes = Number(breakMinutesInput.value);
+          const breakMinutesRaw = breakMinutesInput.value.trim();
+          if (!breakMinutesRaw) {
+            status.textContent = 'Enter a valid break length in minutes.';
+            return;
+          }
+
+          const breakMinutes = Number(breakMinutesRaw);
           if (!Number.isFinite(breakMinutes)) {
             status.textContent = 'Enter a valid break length in minutes.';
             return;
