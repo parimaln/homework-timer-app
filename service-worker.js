@@ -4,6 +4,9 @@ self.addEventListener('install', () => {
 
 const TIMER_STATE_CACHE = 'homework-timer-background-state-v1';
 const TIMER_STATE_URL = '/__homework_timer_state__';
+const SCHEDULING_BUFFER_MS = 50;
+const MS_PER_SECOND = 1000;
+const DURATION_TOLERANCE_SECONDS = 1;
 
 let nextEventTimeout = null;
 
@@ -57,8 +60,8 @@ const broadcastToClients = async (message) => {
   windows.forEach((windowClient) => windowClient.postMessage(message));
 };
 
-const clearScheduledEvent = () => {
-  if (!nextEventTimeout) {
+const clearNextEventTimeout = () => {
+  if (nextEventTimeout === null) {
     return;
   }
   clearTimeout(nextEventTimeout);
@@ -66,21 +69,21 @@ const clearScheduledEvent = () => {
 };
 
 const scheduleNextEvent = async () => {
-  clearScheduledEvent();
+  clearNextEventTimeout();
   const timerState = await readTimerState();
   if (!timerState) {
     return;
   }
 
   const now = Date.now();
-  const nextReminderAt = timerState.startTime + (timerState.lastReminderCount + 1) * timerState.intervalSeconds * 1000;
-  const hasUpcomingReminder = nextReminderAt < timerState.endTime;
-  const nextEventAt = hasUpcomingReminder ? Math.min(nextReminderAt, timerState.endTime) : timerState.endTime;
+  const nextReminderAt =
+    timerState.startTime + (timerState.lastReminderCount + 1) * timerState.intervalSeconds * MS_PER_SECOND;
+  const nextEventAt = Math.min(nextReminderAt, timerState.endTime);
   const delay = Math.max(0, nextEventAt - now);
 
   nextEventTimeout = setTimeout(() => {
     void processTimerEvents();
-  }, delay + 50);
+  }, delay + SCHEDULING_BUFFER_MS);
 };
 
 const showCompletionNotification = async () => {
@@ -114,7 +117,7 @@ const processTimerEvents = async () => {
       type: 'TIMER_COMPLETE',
       statusMessage: 'Session complete.',
     });
-    clearScheduledEvent();
+    clearNextEventTimeout();
     return;
   }
 
@@ -163,12 +166,20 @@ const normalizeTimerState = (input) => {
     return null;
   }
 
+  const durationSeconds = Math.round((endTime - startTime) / MS_PER_SECOND);
+  if (Math.abs(durationSeconds - totalSeconds) > DURATION_TOLERANCE_SECONDS) {
+    return null;
+  }
+
   return {
     totalSeconds,
     intervalSeconds,
     startTime,
     endTime,
-    lastReminderCount: Number.isInteger(lastReminderCount) && lastReminderCount >= 0 ? lastReminderCount : 0,
+    lastReminderCount:
+      Number.isFinite(lastReminderCount) && Number.isInteger(lastReminderCount) && lastReminderCount >= 0
+        ? lastReminderCount
+        : 0,
   };
 };
 
@@ -190,7 +201,7 @@ self.addEventListener('message', (event) => {
   event.waitUntil(
     (async () => {
       if (data.type === 'RESET_TIMER') {
-        clearScheduledEvent();
+        clearNextEventTimeout();
         await clearTimerState();
         return;
       }

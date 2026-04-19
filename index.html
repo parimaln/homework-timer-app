@@ -198,7 +198,11 @@
 
             if (data.type === 'TIMER_STATE_UPDATE' && timerState) {
               const nextReminderCount = Number(data.lastReminderCount);
-              if (Number.isInteger(nextReminderCount) && nextReminderCount >= timerState.lastReminderCount) {
+              if (
+                Number.isFinite(nextReminderCount) &&
+                Number.isInteger(nextReminderCount) &&
+                nextReminderCount >= timerState.lastReminderCount
+              ) {
                 timerState.lastReminderCount = nextReminderCount;
                 saveState();
               }
@@ -252,7 +256,7 @@
 
           serviceWorkerReady
             .then((registration) => {
-              const targetWorker = (registration && registration.active) || navigator.serviceWorker.controller;
+              const targetWorker = registration && registration.active;
               if (!targetWorker) {
                 return;
               }
