@@ -151,6 +151,7 @@
         const meta = document.getElementById('meta');
         const status = document.getElementById('status');
 
+        const AUDIO_CONTEXT_CLEANUP_DELAY_MS = 700;
         let timerState = null;
         let tickHandle = null;
 
@@ -164,7 +165,9 @@
         const toMinutesText = (seconds) => {
           const mins = Math.floor(seconds / 60);
           const secs = seconds % 60;
-          return secs === 0 ? `${mins} min` : `${mins} min ${secs} sec`;
+          const minuteLabel = mins === 1 ? 'minute' : 'minutes';
+          const secondLabel = secs === 1 ? 'second' : 'seconds';
+          return secs === 0 ? `${mins} ${minuteLabel}` : `${mins} ${minuteLabel} ${secs} ${secondLabel}`;
         };
 
         const saveState = () => {
@@ -210,7 +213,7 @@
 
           setTimeout(() => {
             audioContext.close().catch(() => {});
-          }, 700);
+          }, AUDIO_CONTEXT_CLEANUP_DELAY_MS);
         };
 
         const notify = (title, body, isFinal) => {
@@ -302,7 +305,9 @@
               return;
             }
 
-            parsed.lastReminderCount = Number(parsed.lastReminderCount) || 0;
+            const restoredReminderCount = Number(parsed.lastReminderCount);
+            parsed.lastReminderCount =
+              Number.isInteger(restoredReminderCount) && restoredReminderCount >= 0 ? restoredReminderCount : 0;
             parsed.remainingSeconds = Math.max(0, Math.ceil((parsed.endTime - Date.now()) / 1000));
             status.textContent = 'Resumed running timer from previous session.';
             startTimer(parsed);
@@ -316,8 +321,15 @@
           const totalMinutes = Number(totalMinutesInput.value);
           const intervalMinutes = Number(intervalMinutesInput.value);
 
-          if (!Number.isFinite(totalMinutes) || !Number.isFinite(intervalMinutes) || totalMinutes <= 0 || intervalMinutes <= 0) {
-            status.textContent = 'Enter valid positive values for total time and interval.';
+          if (
+            !Number.isFinite(totalMinutes) ||
+            !Number.isFinite(intervalMinutes) ||
+            !Number.isInteger(totalMinutes) ||
+            !Number.isInteger(intervalMinutes) ||
+            totalMinutes <= 0 ||
+            intervalMinutes <= 0
+          ) {
+            status.textContent = 'Enter valid positive whole-minute values for total time and interval.';
             return;
           }
 
@@ -329,8 +341,8 @@
             }
           }
 
-          const totalSeconds = Math.round(totalMinutes * 60);
-          const intervalSeconds = Math.round(intervalMinutes * 60);
+          const totalSeconds = totalMinutes * 60;
+          const intervalSeconds = intervalMinutes * 60;
           const now = Date.now();
 
           const newState = {
@@ -343,7 +355,6 @@
           };
 
           status.textContent = 'Timer started.';
-          saveState(newState);
           startTimer(newState);
         });
 
