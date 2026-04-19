@@ -6,6 +6,8 @@ A plain HTML + JavaScript homework timer designed for GitHub Pages.
 - Dark minimal responsive UI
 - Total time + reminder interval inputs
 - Live countdown with elapsed/remaining status
+- Pause/resume control with optional timed break support
+- Break length validation (max 10 minutes and never longer than remaining time)
 - Timer state persisted in `localStorage` and restored on refresh
 - Service worker powered background reminders/completion notifications (even after tab close)
 - Clicking a notification focuses an existing timer tab or opens the app
