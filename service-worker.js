@@ -1,5 +1,5 @@
-self.addEventListener('install', () => {
-  self.skipWaiting();
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
 });
 
 const TIMER_STATE_CACHE = 'homework-timer-background-state-v1';
@@ -76,8 +76,13 @@ const scheduleNextEvent = async () => {
   }
 
   const now = Date.now();
+  // Compute next reminder time using endTime as reference so scheduling stays correct after pause/resume.
+  // The next reminder fires when elapsed >= (lastReminderCount + 1) * intervalSeconds, where
+  // elapsed = totalSeconds - remaining. Solving for absolute time: now + remaining = endTime,
+  // so nextReminderAt = endTime - (totalSeconds - (lastReminderCount + 1) * intervalSeconds) * MS_PER_SECOND.
   const nextReminderAt =
-    timerState.startTime + (timerState.lastReminderCount + 1) * timerState.intervalSeconds * MS_PER_SECOND;
+    timerState.endTime -
+    (timerState.totalSeconds - (timerState.lastReminderCount + 1) * timerState.intervalSeconds) * MS_PER_SECOND;
   const nextEventAt = Math.min(nextReminderAt, timerState.endTime);
   const delay = Math.max(0, nextEventAt - now);
 
@@ -100,6 +105,7 @@ const showReminderNotification = async (elapsedSeconds, remainingSeconds) => {
     body: `${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`,
     data: { url: getAppUrl() },
     tag: 'homework-timer-reminder',
+    renotify: true,
   });
 };
 
@@ -111,7 +117,11 @@ const processTimerEvents = async () => {
 
   const now = Date.now();
   if (now >= timerState.endTime) {
-    await showCompletionNotification();
+    try {
+      await showCompletionNotification();
+    } catch {
+      // Notification permission denied or unavailable — continue with state cleanup
+    }
     await clearTimerState();
     await broadcastToClients({
       type: 'TIMER_COMPLETE',
@@ -121,14 +131,18 @@ const processTimerEvents = async () => {
     return;
   }
 
-  const elapsedSeconds = Math.max(0, Math.floor((now - timerState.startTime) / 1000));
   const remainingSeconds = Math.max(0, Math.ceil((timerState.endTime - now) / 1000));
+  const elapsedSeconds = Math.max(0, timerState.totalSeconds - remainingSeconds);
   const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
 
   if (intervalCount > timerState.lastReminderCount) {
     timerState.lastReminderCount = intervalCount;
     await writeTimerState(timerState);
-    await showReminderNotification(elapsedSeconds, remainingSeconds);
+    try {
+      await showReminderNotification(elapsedSeconds, remainingSeconds);
+    } catch {
+      // Notification permission denied or unavailable — continue with broadcast
+    }
     await broadcastToClients({
       type: 'TIMER_REMINDER',
     });
@@ -167,7 +181,7 @@ const normalizeTimerState = (input) => {
   }
 
   const durationSeconds = Math.round((endTime - startTime) / MS_PER_SECOND);
-  if (Math.abs(durationSeconds - totalSeconds) > DURATION_TOLERANCE_SECONDS) {
+  if (durationSeconds < totalSeconds - DURATION_TOLERANCE_SECONDS) {
     return null;
   }
 
@@ -224,7 +238,6 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     (async () => {
       const targetUrl = (event.notification.data && event.notification.data.url) || getAppUrl();
-      const appUrl = new URL(getAppUrl());
       const allClients = await self.clients.matchAll({
         type: 'window',
         includeUncontrolled: true,
@@ -233,7 +246,7 @@ self.addEventListener('notificationclick', (event) => {
       const existingAppClient = allClients.find((windowClient) => {
         try {
           const clientUrl = new URL(windowClient.url);
-          return clientUrl.origin === appUrl.origin && clientUrl.pathname === appUrl.pathname;
+          return clientUrl.href.startsWith(self.registration.scope);
         } catch {
           return false;
         }

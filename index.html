@@ -226,12 +226,16 @@
             }
 
             if (data.type === 'TIMER_REMINDER') {
-              playChime(false);
+              if (document.visibilityState === 'visible') {
+                playChime(false);
+              }
             }
 
             if (data.type === 'TIMER_COMPLETE') {
               if (timerState) {
-                playChime(true);
+                if (document.visibilityState === 'visible') {
+                  playChime(true);
+                }
                 clearInterval(tickHandle);
                 tickHandle = null;
                 clearState();
@@ -412,6 +416,7 @@
               status.textContent = 'Break complete. Timer resumed.';
               saveState();
               syncTicking();
+              postTimerStateToServiceWorker('START_TIMER');
               updateView();
             }
             return;
@@ -429,6 +434,17 @@
           timerState.remainingSeconds = remainingSeconds;
           countdown.textContent = toDisplay(remainingSeconds);
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
+
+          // In-page reminder fallback: fires when the service worker is not controlling the page
+          if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+            const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
+            if (intervalCount > timerState.lastReminderCount) {
+              timerState.lastReminderCount = intervalCount;
+              playChime(false);
+              status.textContent = `Reminder: ${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
+              saveState();
+            }
+          }
 
           if (remainingSeconds <= 0) {
             playChime(true);
@@ -611,6 +627,11 @@
           saveState();
           updateView();
           syncTicking();
+          if (!timerState.isPaused) {
+            postTimerStateToServiceWorker('START_TIMER');
+          } else {
+            postTimerStateToServiceWorker('RESET_TIMER');
+          }
         });
 
         breakButton.addEventListener('click', () => {
@@ -661,6 +682,7 @@
           saveState();
           updateView();
           syncTicking();
+          postTimerStateToServiceWorker('RESET_TIMER');
         });
 
         resetButton.addEventListener('click', () => {
