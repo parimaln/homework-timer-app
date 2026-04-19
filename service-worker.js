@@ -7,6 +7,7 @@ const TIMER_STATE_URL = '/__homework_timer_state__';
 const SCHEDULING_BUFFER_MS = 50;
 const MS_PER_SECOND = 1000;
 const DURATION_TOLERANCE_SECONDS = 1;
+const TIMER_NOTIFICATION_SOURCE = 'homework-timer';
 
 let nextEventTimeout = null;
 
@@ -75,10 +76,16 @@ const clearNextEventTimeout = () => {
 
 const showFreshNotification = async (title, options) => {
   const activeNotifications = await self.registration.getNotifications();
-  activeNotifications.forEach((notification) => notification.close());
+  activeNotifications
+    .filter((notification) => notification.data && notification.data.source === TIMER_NOTIFICATION_SOURCE)
+    .forEach((notification) => notification.close());
 
   await self.registration.showNotification(title, {
     ...options,
+    data: {
+      ...options.data,
+      source: TIMER_NOTIFICATION_SOURCE,
+    },
     requireInteraction: true,
     tag: createNotificationTag(),
   });
