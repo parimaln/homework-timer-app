@@ -454,7 +454,11 @@
               parsed.endTime = Date.now() + parsed.remainingSeconds * 1000;
             }
 
-            status.textContent = 'Resumed running timer from previous session.';
+            status.textContent = parsed.isBreakActive
+              ? 'Restored break from previous session.'
+              : parsed.isPaused
+                ? 'Restored paused timer from previous session.'
+                : 'Resumed running timer from previous session.';
             startTimer(parsed);
           } catch {
             clearState();
