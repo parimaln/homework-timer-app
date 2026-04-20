@@ -94,7 +94,7 @@
         transform: translateY(-50%);
         color: #7f889c;
         pointer-events: none;
-        animation: appTypePlaceholderDrift 1.8s ease-in-out infinite alternate;
+        animation: appTypePlaceholderDrift 3.2s ease-in-out infinite alternate;
         transition: opacity 0.18s ease-out;
       }
 
@@ -232,7 +232,7 @@
           App Type
           <div class="app-type-input-row">
             <div id="appTypeInputWrap" class="app-type-input-wrap">
-              <input id="appTypeInput" class="app-type-input" type="text" maxlength="40" />
+              <input id="appTypeInput" class="app-type-input" type="text" />
               <span id="appTypeExample" class="app-type-example" aria-hidden="true">homework</span>
             </div>
             <span class="app-type-suffix">Timer</span>
@@ -294,6 +294,8 @@
         const APP_TYPE_STORAGE_KEY = 'homeworkTimerAppType';
         const SERVICE_WORKER_PATH = './service-worker.js';
         const MAX_BREAK_MINUTES = 10;
+        const APP_TYPE_MAX_LENGTH = 40;
+        const APP_TYPE_EXAMPLE_ROTATION_MS = 3200;
         const DEFAULT_APP_TYPE = 'Homework';
         const APP_TYPE_EXAMPLES = ['homework', 'office work', 'house chores', 'project work'];
 
@@ -328,7 +330,7 @@
           if (typeof value !== 'string') {
             return '';
           }
-          return value.trim().replace(/\s+/g, ' ').slice(0, 40);
+          return value.trim().replace(/\s+/g, ' ').slice(0, APP_TYPE_MAX_LENGTH);
         };
 
         const toTitleCase = (value) =>
@@ -450,8 +452,9 @@
           status.textContent = 'App type saved.';
         });
 
+        appTypeInput.maxLength = APP_TYPE_MAX_LENGTH;
         rotateAppTypeExample();
-        setInterval(rotateAppTypeExample, 1800);
+        setInterval(rotateAppTypeExample, APP_TYPE_EXAMPLE_ROTATION_MS);
         loadAppType();
 
         const toDisplay = (seconds) => {
