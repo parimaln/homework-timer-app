@@ -387,6 +387,7 @@
         let currentHeadingAppType = DEFAULT_APP_TYPE;
         let alertsEnabled = false;
         let hasStoredNotificationPreference = false;
+        let lastTitleMinute = -1;
         const prefersReducedMotionQuery = window.matchMedia
           ? window.matchMedia('(prefers-reduced-motion: reduce)')
           : null;
@@ -546,6 +547,21 @@
           return secs === 0 ? `${mins} ${minuteLabel}` : `${mins} ${minuteLabel} ${secs} ${secondLabel}`;
         };
 
+        const updateDocumentTitle = (remainingSeconds) => {
+          const mins = Math.ceil(remainingSeconds / 60);
+          if (mins === lastTitleMinute) {
+            return;
+          }
+          lastTitleMinute = mins;
+          const label = mins === 1 ? 'min' : 'mins';
+          document.title = `${mins} ${label} remaining: ${currentHeadingAppType} Timer`;
+        };
+
+        const resetDocumentTitle = () => {
+          lastTitleMinute = -1;
+          document.title = `${currentHeadingAppType} Timer`;
+        };
+
         const normalizeTaskName = (value) => {
           if (typeof value !== 'string') {
             return '';
@@ -584,6 +600,7 @@
             // Storage unavailable — ignore
           }
           timerState = null;
+          resetDocumentTitle();
         };
 
         const postTimerStateToServiceWorker = (type) => {
@@ -827,6 +844,7 @@
             meta.textContent = `On break: ${toMinutesText(breakRemainingSeconds)} • ${currentHeadingAppType} remaining: ${toMinutesText(
               timerState.remainingSeconds
             )}`;
+            updateDocumentTitle(timerState.remainingSeconds);
 
             if (breakRemainingSeconds <= 0) {
               timerState.isBreakActive = false;
@@ -847,6 +865,7 @@
           if (timerState.isPaused) {
             countdown.textContent = toDisplay(timerState.remainingSeconds);
             meta.textContent = `Paused • Remaining: ${toMinutesText(timerState.remainingSeconds)}`;
+            updateDocumentTitle(timerState.remainingSeconds);
             return;
           }
 
@@ -856,6 +875,7 @@
           timerState.remainingSeconds = remainingSeconds;
           countdown.textContent = toDisplay(remainingSeconds);
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
+          updateDocumentTitle(remainingSeconds);
 
           if (remainingSeconds <= 0) {
             if (document.visibilityState === 'visible') {
