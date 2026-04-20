@@ -520,8 +520,11 @@
 
         const getTodayDateString = () => toLocalDateString(Date.now());
 
+        let historyDBPromise = null;
+
         const openHistoryDB = () => {
-          return new Promise((resolve, reject) => {
+          if (historyDBPromise) return historyDBPromise;
+          historyDBPromise = new Promise((resolve, reject) => {
             const request = indexedDB.open('homeworkTimerHistory', 1);
             request.onupgradeneeded = (event) => {
               const db = event.target.result;
@@ -531,8 +534,12 @@
               }
             };
             request.onsuccess = (event) => resolve(event.target.result);
-            request.onerror = (event) => reject(event.target.error);
+            request.onerror = (event) => {
+              historyDBPromise = null;
+              reject(event.target.error);
+            };
           });
+          return historyDBPromise;
         };
 
         const saveSessionRecord = async (record) => {
@@ -540,9 +547,13 @@
             const db = await openHistoryDB();
             await new Promise((resolve, reject) => {
               const tx = db.transaction('sessions', 'readwrite');
+              const rejectTransaction = (event, fallbackMessage) => {
+                reject(tx.error || event.target.error || new Error(fallbackMessage));
+              };
               tx.objectStore('sessions').add(record);
               tx.oncomplete = () => resolve();
-              tx.onerror = (event) => reject(event.target.error);
+              tx.onerror = (event) => rejectTransaction(event, 'Failed to save session record.');
+              tx.onabort = (event) => rejectTransaction(event, 'Session record transaction was aborted.');
             });
             await loadHistoryForSelectedDate();
           } catch {
@@ -573,8 +584,13 @@
           return state.totalSeconds - remaining;
         };
 
-        const createSessionRecord = (appType, state, elapsedSeconds, completedFully, endTime) => ({
-          appType,
+        const getSessionAppType = (state) =>
+          typeof state.headingAppType === 'string' && state.headingAppType
+            ? state.headingAppType
+            : currentHeadingAppType;
+
+        const createSessionRecord = (state, elapsedSeconds, completedFully, endTime) => ({
+          appType: getSessionAppType(state),
           taskName: state.taskName || '',
           totalSeconds: state.totalSeconds,
           elapsedSeconds,
@@ -691,7 +707,7 @@
 
             if (data.type === 'TIMER_COMPLETE') {
               if (timerState) {
-                saveSessionRecord(createSessionRecord(currentHeadingAppType, timerState, timerState.totalSeconds, true));
+                saveSessionRecord(createSessionRecord(timerState, timerState.totalSeconds, true));
                 if (document.visibilityState === 'visible') {
                   playChime(true);
                 }
@@ -1109,7 +1125,7 @@
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
 
           if (remainingSeconds <= 0) {
-            saveSessionRecord(createSessionRecord(currentHeadingAppType, timerState, timerState.totalSeconds, true));
+            saveSessionRecord(createSessionRecord(timerState, timerState.totalSeconds, true));
             if (document.visibilityState === 'visible') {
               playChime(true);
             }
@@ -1155,6 +1171,10 @@
             ? timerState.breakRemainingSeconds
             : 0;
           timerState.taskName = normalizeTaskName(timerState.taskName);
+          timerState.headingAppType =
+            typeof timerState.headingAppType === 'string' && timerState.headingAppType
+              ? timerState.headingAppType
+              : currentHeadingAppType;
           timerState.remainingSeconds = Number.isInteger(timerState.remainingSeconds)
             ? timerState.remainingSeconds
             : timerState.totalSeconds;
@@ -1214,7 +1234,7 @@
             }
 
             if (!parsed.isPaused && Date.now() >= parsed.endTime) {
-              saveSessionRecord(createSessionRecord(currentHeadingAppType, parsed, parsed.totalSeconds, true, parsed.endTime));
+              saveSessionRecord(createSessionRecord(parsed, parsed.totalSeconds, true, parsed.endTime));
               status.textContent = 'Session complete while tab was closed.';
               showDesktopNotification(
                 `${currentHeadingAppType} timer complete`,
@@ -1320,6 +1340,7 @@
             remainingSeconds: totalSeconds,
             lastReminderCount: 0,
             taskName,
+            headingAppType: currentHeadingAppType,
             isPaused: false,
             isBreakActive: false,
             breakEndTime: null,
@@ -1415,7 +1436,7 @@
 
         resetButton.addEventListener('click', () => {
           if (timerState) {
-            saveSessionRecord(createSessionRecord(currentHeadingAppType, timerState, computeElapsedSeconds(timerState), false));
+            saveSessionRecord(createSessionRecord(timerState, computeElapsedSeconds(timerState), false));
           }
           clearInterval(tickHandle);
           tickHandle = null;
