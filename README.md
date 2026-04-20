@@ -4,6 +4,7 @@ A plain HTML + JavaScript homework timer designed for GitHub Pages.
 
 ## Features
 - Dark minimal responsive UI
+- Editable app type title (e.g. Homework, Office Work, House Chores) persisted across refreshes
 - Total time + reminder interval inputs
 - Optional task name input persisted with timer state
 - Live countdown with elapsed/remaining status

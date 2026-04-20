@@ -34,10 +34,87 @@
       }
 
       h1 {
-        margin: 0 0 18px;
+        margin: 0;
         text-align: center;
         font-size: clamp(1.4rem, 2.7vw, 1.9rem);
         font-weight: 600;
+      }
+
+      .title-row {
+        margin: 0 0 18px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .icon-button {
+        width: auto;
+        min-width: 40px;
+        padding: 8px 11px;
+        background: #24314a;
+        border-color: #34486d;
+        color: #d5e4ff;
+      }
+
+      .icon-button:hover {
+        background: #2a3a58;
+      }
+
+      .app-type-editor {
+        margin-bottom: 16px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .app-type-input-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .app-type-input-wrap {
+        position: relative;
+        flex: 1;
+      }
+
+      .app-type-input-wrap.has-value .app-type-example {
+        opacity: 0;
+      }
+
+      .app-type-input {
+        font-size: 1.05rem;
+        padding: 14px 12px;
+      }
+
+      .app-type-example {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #7f889c;
+        pointer-events: none;
+        animation: appTypePlaceholderDrift 1.8s ease-in-out infinite alternate;
+        transition: opacity 0.18s ease-out;
+      }
+
+      .app-type-input:focus + .app-type-example {
+        opacity: 0;
+      }
+
+      .app-type-suffix {
+        color: #c4c9d4;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      @keyframes appTypePlaceholderDrift {
+        from {
+          transform: translateY(-62%);
+        }
+        to {
+          transform: translateY(-38%);
+        }
       }
 
       .controls {
@@ -145,7 +222,24 @@
   </head>
   <body>
     <main class="app">
-      <h1>Homework Timer</h1>
+      <div class="title-row">
+        <h1 id="appTitle">Homework Timer</h1>
+        <button id="editAppTypeButton" type="button" class="icon-button" aria-label="Edit app type">✎</button>
+      </div>
+
+      <section id="appTypeEditor" class="app-type-editor hidden" aria-label="Edit app type">
+        <label for="appTypeInput">
+          App Type
+          <div class="app-type-input-row">
+            <div id="appTypeInputWrap" class="app-type-input-wrap">
+              <input id="appTypeInput" class="app-type-input" type="text" maxlength="40" />
+              <span id="appTypeExample" class="app-type-example" aria-hidden="true">homework</span>
+            </div>
+            <span class="app-type-suffix">Timer</span>
+          </div>
+        </label>
+        <button id="saveAppTypeButton" type="button">Save</button>
+      </section>
 
       <section id="setup" class="controls">
         <label for="totalMinutes">
@@ -197,9 +291,19 @@
     <script>
       (() => {
         const STORAGE_KEY = 'homeworkTimerState';
+        const APP_TYPE_STORAGE_KEY = 'homeworkTimerAppType';
         const SERVICE_WORKER_PATH = './service-worker.js';
         const MAX_BREAK_MINUTES = 10;
+        const DEFAULT_APP_TYPE = 'Homework';
+        const APP_TYPE_EXAMPLES = ['homework', 'office work', 'house chores', 'project work'];
 
+        const appTitle = document.getElementById('appTitle');
+        const editAppTypeButton = document.getElementById('editAppTypeButton');
+        const appTypeEditor = document.getElementById('appTypeEditor');
+        const appTypeInputWrap = document.getElementById('appTypeInputWrap');
+        const appTypeInput = document.getElementById('appTypeInput');
+        const appTypeExample = document.getElementById('appTypeExample');
+        const saveAppTypeButton = document.getElementById('saveAppTypeButton');
         const setup = document.getElementById('setup');
         const timerSection = document.getElementById('timerSection');
         const totalMinutesInput = document.getElementById('totalMinutes');
@@ -218,6 +322,52 @@
         let tickHandle = null;
         let sharedAudioContext = null;
         let serviceWorkerReady = Promise.resolve(null);
+        let appTypeExampleIndex = 0;
+
+        const normalizeAppType = (value) => {
+          if (typeof value !== 'string') {
+            return '';
+          }
+          return value.trim().replace(/\s+/g, ' ').slice(0, 40);
+        };
+
+        const toTitleCase = (value) =>
+          value
+            .split(' ')
+            .filter(Boolean)
+            .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`)
+            .join(' ');
+
+        const getHeadingAppType = (value) => {
+          const normalized = normalizeAppType(value);
+          return normalized ? toTitleCase(normalized) : DEFAULT_APP_TYPE;
+        };
+
+        const applyAppType = (value) => {
+          const headingAppType = getHeadingAppType(value);
+          const heading = `${headingAppType} Timer`;
+          appTitle.textContent = heading;
+          document.title = heading;
+        };
+
+        const loadAppType = () => {
+          let storedAppType = '';
+          try {
+            storedAppType = localStorage.getItem(APP_TYPE_STORAGE_KEY) || '';
+          } catch {
+            // Storage unavailable — fallback to default app type
+          }
+          applyAppType(storedAppType);
+        };
+
+        const syncAppTypeExampleVisibility = () => {
+          appTypeInputWrap.classList.toggle('has-value', appTypeInput.value.trim().length > 0);
+        };
+
+        const rotateAppTypeExample = () => {
+          appTypeExample.textContent = APP_TYPE_EXAMPLES[appTypeExampleIndex];
+          appTypeExampleIndex = (appTypeExampleIndex + 1) % APP_TYPE_EXAMPLES.length;
+        };
 
         if ('serviceWorker' in navigator) {
           serviceWorkerReady = navigator.serviceWorker
@@ -266,6 +416,43 @@
             }
           });
         }
+
+        editAppTypeButton.addEventListener('click', () => {
+          const shouldShow = appTypeEditor.classList.contains('hidden');
+          appTypeEditor.classList.toggle('hidden');
+          if (shouldShow) {
+            appTypeInput.value = '';
+            syncAppTypeExampleVisibility();
+            appTypeInput.focus();
+          }
+        });
+
+        appTypeInput.addEventListener('input', syncAppTypeExampleVisibility);
+
+        saveAppTypeButton.addEventListener('click', () => {
+          const nextAppType = normalizeAppType(appTypeInput.value);
+          if (!nextAppType) {
+            status.textContent = 'Enter an app type before saving.';
+            appTypeInput.focus();
+            return;
+          }
+
+          try {
+            localStorage.setItem(APP_TYPE_STORAGE_KEY, nextAppType);
+          } catch {
+            // Storage unavailable — still update in current session
+          }
+
+          applyAppType(nextAppType);
+          appTypeInput.value = '';
+          syncAppTypeExampleVisibility();
+          appTypeEditor.classList.add('hidden');
+          status.textContent = 'App type saved.';
+        });
+
+        rotateAppTypeExample();
+        setInterval(rotateAppTypeExample, 1800);
+        loadAppType();
 
         const toDisplay = (seconds) => {
           const safeSeconds = Math.max(0, seconds);
