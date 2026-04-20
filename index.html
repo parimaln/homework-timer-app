@@ -564,6 +564,25 @@
           }
         };
 
+        const computeElapsedSeconds = (state) => {
+          if (state.isPaused || !state.endTime) {
+            return state.totalSeconds - state.remainingSeconds;
+          }
+          const remaining = Math.max(0, Math.ceil((state.endTime - Date.now()) / 1000));
+          return state.totalSeconds - remaining;
+        };
+
+        const createSessionRecord = (appType, state, elapsedSeconds, completedFully) => ({
+          appType,
+          taskName: state.taskName || '',
+          totalSeconds: state.totalSeconds,
+          elapsedSeconds,
+          date: toLocalDateString(state.startTime),
+          startTime: state.startTime,
+          endTime: Date.now(),
+          completedFully,
+        });
+
         const formatDuration = (seconds) => {
           const safe = Math.max(0, seconds);
           const hrs = Math.floor(safe / 3600);
@@ -671,16 +690,7 @@
 
             if (data.type === 'TIMER_COMPLETE') {
               if (timerState) {
-                saveSessionRecord({
-                  appType: currentHeadingAppType,
-                  taskName: timerState.taskName || '',
-                  totalSeconds: timerState.totalSeconds,
-                  elapsedSeconds: timerState.totalSeconds,
-                  date: toLocalDateString(timerState.startTime),
-                  startTime: timerState.startTime,
-                  endTime: Date.now(),
-                  completedFully: true,
-                });
+                saveSessionRecord(createSessionRecord(currentHeadingAppType, timerState, timerState.totalSeconds, true));
                 if (document.visibilityState === 'visible') {
                   playChime(true);
                 }
@@ -1098,16 +1108,7 @@
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
 
           if (remainingSeconds <= 0) {
-            saveSessionRecord({
-              appType: currentHeadingAppType,
-              taskName: timerState.taskName || '',
-              totalSeconds: timerState.totalSeconds,
-              elapsedSeconds: timerState.totalSeconds,
-              date: toLocalDateString(timerState.startTime),
-              startTime: timerState.startTime,
-              endTime: Date.now(),
-              completedFully: true,
-            });
+            saveSessionRecord(createSessionRecord(currentHeadingAppType, timerState, timerState.totalSeconds, true));
             if (document.visibilityState === 'visible') {
               playChime(true);
             }
@@ -1212,16 +1213,7 @@
             }
 
             if (!parsed.isPaused && Date.now() >= parsed.endTime) {
-              saveSessionRecord({
-                appType: currentHeadingAppType,
-                taskName: parsed.taskName || '',
-                totalSeconds: parsed.totalSeconds,
-                elapsedSeconds: parsed.totalSeconds,
-                date: toLocalDateString(parsed.startTime),
-                startTime: parsed.startTime,
-                endTime: parsed.endTime,
-                completedFully: true,
-              });
+              saveSessionRecord({ ...createSessionRecord(currentHeadingAppType, parsed, parsed.totalSeconds, true), endTime: parsed.endTime });
               status.textContent = 'Session complete while tab was closed.';
               showDesktopNotification(
                 `${currentHeadingAppType} timer complete`,
@@ -1422,23 +1414,7 @@
 
         resetButton.addEventListener('click', () => {
           if (timerState) {
-            let elapsedSeconds;
-            if (timerState.isPaused || !timerState.endTime) {
-              elapsedSeconds = timerState.totalSeconds - timerState.remainingSeconds;
-            } else {
-              const remaining = Math.max(0, Math.ceil((timerState.endTime - Date.now()) / 1000));
-              elapsedSeconds = timerState.totalSeconds - remaining;
-            }
-            saveSessionRecord({
-              appType: currentHeadingAppType,
-              taskName: timerState.taskName || '',
-              totalSeconds: timerState.totalSeconds,
-              elapsedSeconds,
-              date: toLocalDateString(timerState.startTime),
-              startTime: timerState.startTime,
-              endTime: Date.now(),
-              completedFully: false,
-            });
+            saveSessionRecord(createSessionRecord(currentHeadingAppType, timerState, computeElapsedSeconds(timerState), false));
           }
           clearInterval(tickHandle);
           tickHandle = null;
