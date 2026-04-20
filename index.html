@@ -350,6 +350,7 @@
         const APP_TYPE_STORAGE_KEY = 'homeworkTimerAppType';
         const NOTIFICATION_PREF_STORAGE_KEY = 'homeworkTimerNotificationsEnabled';
         const SERVICE_WORKER_PATH = './service-worker.js';
+        const MAX_MOBILE_VIEWPORT_WIDTH = 1024;
         const MAX_BREAK_MINUTES = 10;
         const APP_TYPE_MAX_LENGTH = 40;
         const APP_TYPE_EXAMPLE_ROTATION_MS = 3200;
@@ -384,7 +385,8 @@
         let serviceWorkerReady = Promise.resolve(null);
         let appTypeExampleIndex = 0;
         let currentHeadingAppType = DEFAULT_APP_TYPE;
-        let alertsEnabled = true;
+        let alertsEnabled = false;
+        let hasStoredNotificationPreference = false;
         const prefersReducedMotionQuery = window.matchMedia
           ? window.matchMedia('(prefers-reduced-motion: reduce)')
           : null;
@@ -618,23 +620,26 @@
 
         const isLikelyMobileDevice = () => {
           const userAgent = navigator.userAgent || '';
-          if (/Mobi|Android|iPhone|iPad|iPod/i.test(userAgent)) {
-            return true;
-          }
-          return navigator.maxTouchPoints > 1 && window.innerWidth <= 1024;
+          const hasMobileUserAgent = /Mobi|Android|iPhone|iPad|iPod/i.test(userAgent);
+          const hasTouch = 'ontouchstart' in window;
+          return hasMobileUserAgent || (hasTouch && navigator.maxTouchPoints > 1 && window.innerWidth <= MAX_MOBILE_VIEWPORT_WIDTH);
         };
 
         const loadNotificationPreference = () => {
           try {
-            alertsEnabled = localStorage.getItem(NOTIFICATION_PREF_STORAGE_KEY) !== '0';
+            const storedPreference = localStorage.getItem(NOTIFICATION_PREF_STORAGE_KEY);
+            hasStoredNotificationPreference = storedPreference !== null;
+            alertsEnabled = storedPreference === null ? true : storedPreference === 'true';
           } catch {
             alertsEnabled = true;
+            hasStoredNotificationPreference = false;
           }
         };
 
         const saveNotificationPreference = () => {
+          hasStoredNotificationPreference = true;
           try {
-            localStorage.setItem(NOTIFICATION_PREF_STORAGE_KEY, alertsEnabled ? '1' : '0');
+            localStorage.setItem(NOTIFICATION_PREF_STORAGE_KEY, String(alertsEnabled));
           } catch {
             // Storage unavailable — keep preference in-memory only
           }
@@ -654,7 +659,7 @@
           }
 
           const isSubscribed = alertsEnabled && Notification.permission === 'granted';
-          notificationToggleButton.textContent = isSubscribed ? 'Unsubscribe Alerts' : 'Subscribe to Alerts';
+          notificationToggleButton.textContent = isSubscribed ? 'Unsubscribe from Alerts' : 'Subscribe to Alerts';
           notificationToggleButton.dataset.subscribed = isSubscribed ? 'true' : 'false';
           notificationToggleButton.setAttribute('aria-pressed', isSubscribed ? 'true' : 'false');
           notificationToggleButton.disabled = false;
@@ -674,7 +679,7 @@
 
           try {
             const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
+            if (permission === 'granted' && !hasStoredNotificationPreference) {
               alertsEnabled = true;
               saveNotificationPreference();
             }
