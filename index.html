@@ -387,6 +387,7 @@
         let currentHeadingAppType = DEFAULT_APP_TYPE;
         let alertsEnabled = false;
         let hasStoredNotificationPreference = false;
+        let lastTitleMinute = -1;
         const prefersReducedMotionQuery = window.matchMedia
           ? window.matchMedia('(prefers-reduced-motion: reduce)')
           : null;
@@ -546,6 +547,22 @@
           return secs === 0 ? `${mins} ${minuteLabel}` : `${mins} ${minuteLabel} ${secs} ${secondLabel}`;
         };
 
+        const updateDocumentTitle = (remainingSeconds) => {
+          const mins = Math.ceil(remainingSeconds / 60);
+          const label = mins === 1 ? 'min' : 'mins';
+          const nextTitle = `${mins} ${label} remaining: ${currentHeadingAppType} Timer`;
+          if (mins === lastTitleMinute && document.title === nextTitle) {
+            return;
+          }
+          lastTitleMinute = mins;
+          document.title = nextTitle;
+        };
+
+        const resetDocumentTitle = () => {
+          lastTitleMinute = -1;
+          document.title = `${currentHeadingAppType} Timer`;
+        };
+
         const normalizeTaskName = (value) => {
           if (typeof value !== 'string') {
             return '';
@@ -584,6 +601,7 @@
             // Storage unavailable — ignore
           }
           timerState = null;
+          resetDocumentTitle();
         };
 
         const postTimerStateToServiceWorker = (type) => {
@@ -827,6 +845,7 @@
             meta.textContent = `On break: ${toMinutesText(breakRemainingSeconds)} • ${currentHeadingAppType} remaining: ${toMinutesText(
               timerState.remainingSeconds
             )}`;
+            updateDocumentTitle(timerState.remainingSeconds);
 
             if (breakRemainingSeconds <= 0) {
               timerState.isBreakActive = false;
@@ -847,6 +866,7 @@
           if (timerState.isPaused) {
             countdown.textContent = toDisplay(timerState.remainingSeconds);
             meta.textContent = `Paused • Remaining: ${toMinutesText(timerState.remainingSeconds)}`;
+            updateDocumentTitle(timerState.remainingSeconds);
             return;
           }
 
@@ -873,6 +893,8 @@
             showSetup();
             return;
           }
+
+          updateDocumentTitle(remainingSeconds);
 
           // Always track reminders in-page; the service worker setTimeout may not
           // survive when the browser idles the worker after a tab switch or close.
