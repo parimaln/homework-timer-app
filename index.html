@@ -538,12 +538,13 @@
         const saveSessionRecord = async (record) => {
           try {
             const db = await openHistoryDB();
-            return new Promise((resolve, reject) => {
+            await new Promise((resolve, reject) => {
               const tx = db.transaction('sessions', 'readwrite');
               tx.objectStore('sessions').add(record);
-              tx.oncomplete = () => { resolve(); loadHistoryForSelectedDate(); };
+              tx.oncomplete = () => resolve();
               tx.onerror = (event) => reject(event.target.error);
             });
+            await loadHistoryForSelectedDate();
           } catch {
             // IndexedDB unavailable — continue without history
           }
@@ -572,14 +573,14 @@
           return state.totalSeconds - remaining;
         };
 
-        const createSessionRecord = (appType, state, elapsedSeconds, completedFully) => ({
+        const createSessionRecord = (appType, state, elapsedSeconds, completedFully, endTime) => ({
           appType,
           taskName: state.taskName || '',
           totalSeconds: state.totalSeconds,
           elapsedSeconds,
           date: toLocalDateString(state.startTime),
           startTime: state.startTime,
-          endTime: Date.now(),
+          endTime: endTime != null ? endTime : Date.now(),
           completedFully,
         });
 
@@ -1213,7 +1214,7 @@
             }
 
             if (!parsed.isPaused && Date.now() >= parsed.endTime) {
-              saveSessionRecord({ ...createSessionRecord(currentHeadingAppType, parsed, parsed.totalSeconds, true), endTime: parsed.endTime });
+              saveSessionRecord(createSessionRecord(currentHeadingAppType, parsed, parsed.totalSeconds, true, parsed.endTime));
               status.textContent = 'Session complete while tab was closed.';
               showDesktopNotification(
                 `${currentHeadingAppType} timer complete`,
