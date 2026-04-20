@@ -158,6 +158,11 @@
           <input id="intervalMinutes" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 5" required />
         </label>
 
+        <label for="taskName">
+          Task (optional)
+          <input id="taskName" type="text" maxlength="120" placeholder="e.g. Math homework" />
+        </label>
+
         <button id="startButton" type="button">Play / Start</button>
       </section>
 
@@ -199,6 +204,7 @@
         const timerSection = document.getElementById('timerSection');
         const totalMinutesInput = document.getElementById('totalMinutes');
         const intervalMinutesInput = document.getElementById('intervalMinutes');
+        const taskNameInput = document.getElementById('taskName');
         const startButton = document.getElementById('startButton');
         const pauseButton = document.getElementById('pauseButton');
         const breakMinutesInput = document.getElementById('breakMinutes');
@@ -276,6 +282,15 @@
           return secs === 0 ? `${mins} ${minuteLabel}` : `${mins} ${minuteLabel} ${secs} ${secondLabel}`;
         };
 
+        const normalizeTaskName = (value) => {
+          if (typeof value !== 'string') {
+            return '';
+          }
+          return value.trim().slice(0, 120);
+        };
+
+        const taskNotificationPrefix = (taskName) => (taskName ? `Task: ${taskName}. ` : '');
+
         const showDesktopNotification = (title, body) => {
           if (!('Notification' in window) || Notification.permission !== 'granted') {
             return;
@@ -328,6 +343,7 @@
                       startTime: timerState.startTime,
                       endTime: timerState.endTime,
                       lastReminderCount: timerState.lastReminderCount,
+                      taskName: timerState.taskName,
                     }
                   : null,
               });
@@ -452,7 +468,8 @@
             if (intervalCount > timerState.lastReminderCount) {
               timerState.lastReminderCount = intervalCount;
               playChime(false);
-              status.textContent = `Reminder: ${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
+              const reminderBody = `${taskNotificationPrefix(timerState.taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
+              status.textContent = `Reminder: ${reminderBody}`;
               saveState();
             }
           }
@@ -478,6 +495,7 @@
           timerState.breakRemainingSeconds = Number.isInteger(timerState.breakRemainingSeconds)
             ? timerState.breakRemainingSeconds
             : 0;
+          timerState.taskName = normalizeTaskName(timerState.taskName);
           timerState.remainingSeconds = Number.isInteger(timerState.remainingSeconds)
             ? timerState.remainingSeconds
             : timerState.totalSeconds;
@@ -510,6 +528,7 @@
             const intervalSeconds = parsed?.intervalSeconds;
             const startTime = parsed?.startTime;
             const endTime = parsed?.endTime;
+            parsed.taskName = normalizeTaskName(parsed?.taskName);
 
             if (
               !parsed ||
@@ -532,7 +551,10 @@
 
             if (!parsed.isPaused && Date.now() >= parsed.endTime) {
               status.textContent = 'Session complete while tab was closed.';
-              showDesktopNotification('Homework timer complete', 'Time is up. Great work finishing your session!');
+              showDesktopNotification(
+                'Homework timer complete',
+                `${taskNotificationPrefix(parsed.taskName)}Time is up. Great work finishing your session!`
+              );
               if (document.visibilityState === 'visible') {
                 playChime(true);
               }
@@ -557,7 +579,7 @@
               const intervalCount = Math.floor(elapsedSeconds / parsed.intervalSeconds);
               if (intervalCount > parsed.lastReminderCount) {
                 parsed.lastReminderCount = intervalCount;
-                const reminderBody = `${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(parsed.remainingSeconds)} remaining.`;
+                const reminderBody = `${taskNotificationPrefix(parsed.taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(parsed.remainingSeconds)} remaining.`;
                 restoreStatusMessage = `Reminder: ${reminderBody}`;
                 showDesktopNotification('Homework timer reminder', reminderBody);
                 if (document.visibilityState === 'visible') {
@@ -592,6 +614,7 @@
         startButton.addEventListener('click', async () => {
           const totalMinutes = Number(totalMinutesInput.value);
           const intervalMinutes = Number(intervalMinutesInput.value);
+          const taskName = normalizeTaskName(taskNameInput.value);
 
           if (
             !Number.isFinite(totalMinutes) ||
@@ -639,6 +662,7 @@
             endTime: now + totalSeconds * 1000,
             remainingSeconds: totalSeconds,
             lastReminderCount: 0,
+            taskName,
             isPaused: false,
             isBreakActive: false,
             breakEndTime: null,

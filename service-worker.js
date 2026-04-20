@@ -24,6 +24,15 @@ const toMinutesText = (seconds) => {
   return secs === 0 ? `${mins} ${minuteLabel}` : `${mins} ${minuteLabel} ${secs} ${secondLabel}`;
 };
 
+const normalizeTaskName = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim().slice(0, 120);
+};
+
+const taskNotificationPrefix = (taskName) => (taskName ? `Task: ${taskName}. ` : '');
+
 const getAppUrl = () => self.registration.scope;
 
 const readTimerState = async () => {
@@ -114,17 +123,17 @@ const scheduleNextEvent = async () => {
   }, delay + SCHEDULING_BUFFER_MS);
 };
 
-const showCompletionNotification = async () => {
+const showCompletionNotification = async (taskName) => {
   await showFreshNotification('Homework timer complete', {
-    body: 'Time is up. Great work finishing your session!',
+    body: `${taskNotificationPrefix(taskName)}Time is up. Great work finishing your session!`,
     data: { url: getAppUrl() },
     renotify: false,
   });
 };
 
-const showReminderNotification = async (elapsedSeconds, remainingSeconds) => {
+const showReminderNotification = async (elapsedSeconds, remainingSeconds, taskName) => {
   await showFreshNotification('Homework timer reminder', {
-    body: `${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`,
+    body: `${taskNotificationPrefix(taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`,
     data: { url: getAppUrl() },
     renotify: false,
   });
@@ -139,7 +148,7 @@ const processTimerEvents = async () => {
   const now = Date.now();
   if (now >= timerState.endTime) {
     try {
-      await showCompletionNotification();
+      await showCompletionNotification(timerState.taskName);
     } catch {
       // Notification permission denied or unavailable — continue with state cleanup
     }
@@ -160,7 +169,7 @@ const processTimerEvents = async () => {
     timerState.lastReminderCount = intervalCount;
     await writeTimerState(timerState);
     try {
-      await showReminderNotification(elapsedSeconds, remainingSeconds);
+      await showReminderNotification(elapsedSeconds, remainingSeconds, timerState.taskName);
     } catch {
       // Notification permission denied or unavailable — continue with broadcast
     }
@@ -170,7 +179,7 @@ const processTimerEvents = async () => {
     await broadcastToClients({
       type: 'TIMER_STATE_UPDATE',
       lastReminderCount: timerState.lastReminderCount,
-      statusMessage: `Reminder: ${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`,
+      statusMessage: `Reminder: ${taskNotificationPrefix(timerState.taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`,
     });
   }
 
@@ -187,6 +196,7 @@ const normalizeTimerState = (input) => {
   const startTime = Number(input.startTime);
   const endTime = Number(input.endTime);
   const lastReminderCount = Number(input.lastReminderCount);
+  const taskName = normalizeTaskName(input.taskName);
 
   if (
     !Number.isFinite(totalSeconds) ||
@@ -211,6 +221,7 @@ const normalizeTimerState = (input) => {
     intervalSeconds,
     startTime,
     endTime,
+    taskName,
     lastReminderCount:
       Number.isFinite(lastReminderCount) && Number.isInteger(lastReminderCount) && lastReminderCount >= 0
         ? lastReminderCount
