@@ -674,8 +674,6 @@
 
         const hasExplicitNotificationOptOut = () => hasStoredNotificationPreference === true && alertsEnabled === false;
 
-        const isServiceWorkerControllingPage = () => 'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller);
-
         const requestDesktopNotificationPermissionOnLoad = async () => {
           if (
             !('Notification' in window) ||
@@ -854,33 +852,19 @@
 
           const remainingSeconds = Math.max(0, Math.ceil((timerState.endTime - now) / 1000));
           const elapsedSeconds = timerState.totalSeconds - remainingSeconds;
-          const hasActiveServiceWorkerController = isServiceWorkerControllingPage();
 
           timerState.remainingSeconds = remainingSeconds;
           countdown.textContent = toDisplay(remainingSeconds);
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
 
-          // In-page reminder fallback: fires when the service worker is not controlling the page
-          if (!hasActiveServiceWorkerController) {
-            const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
-            if (intervalCount > timerState.lastReminderCount) {
-              timerState.lastReminderCount = intervalCount;
-              playChime(false);
-              const reminderBody = `${taskNotificationPrefix(timerState.taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
-              showDesktopNotification(`${currentHeadingAppType} timer reminder`, reminderBody);
-              status.textContent = `Reminder: ${reminderBody}`;
-              saveState();
-            }
-          }
-
           if (remainingSeconds <= 0) {
-            playChime(true);
-            if (!hasActiveServiceWorkerController) {
-              showDesktopNotification(
-                `${currentHeadingAppType} timer complete`,
-                `${taskNotificationPrefix(timerState.taskName)}Time is up. Great work finishing your session!`
-              );
+            if (document.visibilityState === 'visible') {
+              playChime(true);
             }
+            showDesktopNotification(
+              `${currentHeadingAppType} timer complete`,
+              `${taskNotificationPrefix(timerState.taskName)}Time is up. Great work finishing your session!`
+            );
             status.textContent = 'Session complete.';
             clearInterval(tickHandle);
             tickHandle = null;
@@ -888,6 +872,22 @@
             clearState();
             showSetup();
             return;
+          }
+
+          // Always track reminders in-page; the service worker setTimeout may not
+          // survive when the browser idles the worker after a tab switch or close.
+          const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
+          if (intervalCount > timerState.lastReminderCount) {
+            timerState.lastReminderCount = intervalCount;
+            const reminderBody = `${taskNotificationPrefix(timerState.taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
+            status.textContent = `Reminder: ${reminderBody}`;
+            if (document.visibilityState === 'visible') {
+              playChime(false);
+            }
+            showDesktopNotification(`${currentHeadingAppType} timer reminder`, reminderBody);
+            saveState();
+            // Sync updated reminder count to service worker so it skips the same interval
+            postTimerStateToServiceWorker('START_TIMER');
           }
         };
 
@@ -1165,6 +1165,18 @@
           clearState();
           status.textContent = 'Timer stopped.';
           showSetup();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+          if (!timerState || timerState.isPaused || timerState.isBreakActive || !timerState.endTime) {
+            return;
+          }
+          if (document.visibilityState === 'hidden') {
+            // Refresh service worker timer so its setTimeout is re-established
+            postTimerStateToServiceWorker('START_TIMER');
+          } else if (document.visibilityState === 'visible') {
+            updateView();
+          }
         });
 
         loadNotificationPreference();
