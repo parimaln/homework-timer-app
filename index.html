@@ -565,9 +565,10 @@
         };
 
         const formatDuration = (seconds) => {
-          const hrs = Math.floor(seconds / 3600);
-          const mins = Math.floor((seconds % 3600) / 60);
-          const secs = seconds % 60;
+          const safe = Math.max(0, seconds);
+          const hrs = Math.floor(safe / 3600);
+          const mins = Math.floor((safe % 3600) / 60);
+          const secs = safe % 60;
           if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`;
           return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
         };
@@ -583,8 +584,8 @@
             historyList.innerHTML = '<p class="history-empty">No sessions recorded for this date.</p>';
             return;
           }
-          sessions.sort((a, b) => b.startTime - a.startTime);
-          historyList.innerHTML = sessions.map((s) => `
+          const sorted = sessions.slice().sort((a, b) => b.startTime - a.startTime);
+          historyList.innerHTML = sorted.map((s) => `
             <div class="session-card">
               <div class="session-card-header">
                 <span class="session-card-title">${escapeHtml(s.appType)} Timer</span>
