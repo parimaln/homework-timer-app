@@ -857,22 +857,6 @@
           countdown.textContent = toDisplay(remainingSeconds);
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
 
-          // Always track reminders in-page; the service worker setTimeout may not
-          // survive when the browser idles the worker after a tab switch or close.
-          const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
-          if (intervalCount > timerState.lastReminderCount) {
-            timerState.lastReminderCount = intervalCount;
-            const reminderBody = `${taskNotificationPrefix(timerState.taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
-            status.textContent = `Reminder: ${reminderBody}`;
-            if (document.visibilityState === 'visible') {
-              playChime(false);
-            }
-            showDesktopNotification(`${currentHeadingAppType} timer reminder`, reminderBody);
-            saveState();
-            // Sync updated reminder count to service worker so it skips the same interval
-            postTimerStateToServiceWorker('START_TIMER');
-          }
-
           if (remainingSeconds <= 0) {
             if (document.visibilityState === 'visible') {
               playChime(true);
@@ -888,6 +872,22 @@
             clearState();
             showSetup();
             return;
+          }
+
+          // Always track reminders in-page; the service worker setTimeout may not
+          // survive when the browser idles the worker after a tab switch or close.
+          const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
+          if (intervalCount > timerState.lastReminderCount) {
+            timerState.lastReminderCount = intervalCount;
+            const reminderBody = `${taskNotificationPrefix(timerState.taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
+            status.textContent = `Reminder: ${reminderBody}`;
+            if (document.visibilityState === 'visible') {
+              playChime(false);
+            }
+            showDesktopNotification(`${currentHeadingAppType} timer reminder`, reminderBody);
+            saveState();
+            // Sync updated reminder count to service worker so it skips the same interval
+            postTimerStateToServiceWorker('START_TIMER');
           }
         };
 
