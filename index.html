@@ -523,15 +523,20 @@
 
           try {
             const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') {
+              clearState();
+              showSetup();
+              return;
+            }
+
             let restoreStatusMessage = '';
-            const totalSeconds = parsed?.totalSeconds;
-            const intervalSeconds = parsed?.intervalSeconds;
-            const startTime = parsed?.startTime;
-            const endTime = parsed?.endTime;
-            parsed.taskName = normalizeTaskName(parsed?.taskName);
+            const totalSeconds = parsed.totalSeconds;
+            const intervalSeconds = parsed.intervalSeconds;
+            const startTime = parsed.startTime;
+            const endTime = parsed.endTime;
+            parsed.taskName = normalizeTaskName(parsed.taskName);
 
             if (
-              !parsed ||
               !Number.isFinite(totalSeconds) ||
               !Number.isFinite(intervalSeconds) ||
               !Number.isFinite(startTime) ||
