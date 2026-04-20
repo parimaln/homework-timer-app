@@ -213,6 +213,18 @@
         display: none;
       }
 
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
       @media (max-width: 480px) {
         .app {
           padding: 18px;
@@ -224,7 +236,7 @@
     <main class="app">
       <div class="title-row">
         <h1 id="appTitle">Homework Timer</h1>
-        <button id="editAppTypeButton" type="button" class="icon-button" aria-label="Edit app type">✎</button>
+        <button id="editAppTypeButton" type="button" class="icon-button" aria-label="Edit app type">✎ Edit</button>
       </div>
 
       <section id="appTypeEditor" class="app-type-editor hidden" aria-label="Edit app type">
@@ -232,12 +244,13 @@
           App Type
           <div class="app-type-input-row">
             <div id="appTypeInputWrap" class="app-type-input-wrap">
-              <input id="appTypeInput" class="app-type-input" type="text" />
+              <input id="appTypeInput" class="app-type-input" type="text" aria-describedby="appTypeExamplesHelp" />
               <span id="appTypeExample" class="app-type-example" aria-hidden="true">homework</span>
             </div>
             <span class="app-type-suffix">Timer</span>
           </div>
         </label>
+        <p id="appTypeExamplesHelp" class="sr-only">Examples: homework, office work, house chores, project work.</p>
         <button id="saveAppTypeButton" type="button">Save</button>
       </section>
 
@@ -434,7 +447,7 @@
         saveAppTypeButton.addEventListener('click', () => {
           const nextAppType = normalizeAppType(appTypeInput.value);
           if (!nextAppType) {
-            status.textContent = 'Enter an app type before saving.';
+            status.textContent = 'Please enter a name for your timer (e.g., Homework, Office Work).';
             appTypeInput.focus();
             return;
           }
