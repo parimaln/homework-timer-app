@@ -506,14 +506,24 @@
           try {
             const parsed = JSON.parse(raw);
             let restoreStatusMessage = '';
+            const totalSeconds = parsed?.totalSeconds;
+            const intervalSeconds = parsed?.intervalSeconds;
+            const startTime = parsed?.startTime;
+            const endTime = parsed?.endTime;
+
             if (
               !parsed ||
-              typeof parsed.totalSeconds !== 'number' ||
-              typeof parsed.intervalSeconds !== 'number' ||
-              parsed.totalSeconds <= 0 ||
-              parsed.intervalSeconds <= 0 ||
-              (typeof parsed.endTime !== 'number' && !parsed.isPaused) ||
-              typeof parsed.startTime !== 'number'
+              !Number.isFinite(totalSeconds) ||
+              !Number.isFinite(intervalSeconds) ||
+              !Number.isFinite(startTime) ||
+              !Number.isInteger(totalSeconds) ||
+              !Number.isInteger(intervalSeconds) ||
+              !Number.isInteger(startTime) ||
+              totalSeconds <= 0 ||
+              intervalSeconds <= 0 ||
+              intervalSeconds > totalSeconds ||
+              (!parsed.isPaused &&
+                (!Number.isFinite(endTime) || !Number.isInteger(endTime) || endTime <= startTime))
             ) {
               clearState();
               showSetup();
