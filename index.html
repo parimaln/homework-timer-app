@@ -7,6 +7,7 @@
     <style>
       :root {
         color-scheme: dark;
+        --app-type-rotation-ms: 3200ms;
       }
 
       * {
@@ -94,7 +95,7 @@
         transform: translateY(-50%);
         color: #7f889c;
         pointer-events: none;
-        animation: appTypePlaceholderDrift 3.2s ease-in-out infinite alternate;
+        animation: appTypePlaceholderDrift var(--app-type-rotation-ms, 3200ms) ease-in-out infinite alternate;
         transition: opacity 0.18s ease-out;
       }
 
@@ -465,9 +466,13 @@
           status.textContent = 'App type saved.';
         });
 
+        document.documentElement.style.setProperty('--app-type-rotation-ms', `${APP_TYPE_EXAMPLE_ROTATION_MS}ms`);
         appTypeInput.maxLength = APP_TYPE_MAX_LENGTH;
         rotateAppTypeExample();
-        setInterval(rotateAppTypeExample, APP_TYPE_EXAMPLE_ROTATION_MS);
+        const appTypeExampleRotationHandle = setInterval(rotateAppTypeExample, APP_TYPE_EXAMPLE_ROTATION_MS);
+        window.addEventListener('beforeunload', () => {
+          clearInterval(appTypeExampleRotationHandle);
+        });
         loadAppType();
 
         const toDisplay = (seconds) => {
