@@ -672,8 +672,17 @@
           postTimerStateToServiceWorker('START_TIMER');
         };
 
+        const hasExplicitNotificationOptOut = () => hasStoredNotificationPreference === true && alertsEnabled === false;
+
+        const isServiceWorkerControllingPage = () => 'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller);
+
         const requestDesktopNotificationPermissionOnLoad = async () => {
-          if (!('Notification' in window) || Notification.permission !== 'default' || isLikelyMobileDevice()) {
+          if (
+            !('Notification' in window) ||
+            Notification.permission !== 'default' ||
+            isLikelyMobileDevice() ||
+            hasExplicitNotificationOptOut()
+          ) {
             return;
           }
 
@@ -715,8 +724,11 @@
           }
 
           if (Notification.permission === 'denied') {
+            alertsEnabled = false;
+            saveNotificationPreference();
             status.textContent = 'Notifications are blocked by your browser settings.';
             updateNotificationToggleButton();
+            syncNotificationPreferenceToServiceWorker();
             return;
           }
 
@@ -842,18 +854,20 @@
 
           const remainingSeconds = Math.max(0, Math.ceil((timerState.endTime - now) / 1000));
           const elapsedSeconds = timerState.totalSeconds - remainingSeconds;
+          const hasActiveServiceWorkerController = isServiceWorkerControllingPage();
 
           timerState.remainingSeconds = remainingSeconds;
           countdown.textContent = toDisplay(remainingSeconds);
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
 
           // In-page reminder fallback: fires when the service worker is not controlling the page
-          if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+          if (!hasActiveServiceWorkerController) {
             const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
             if (intervalCount > timerState.lastReminderCount) {
               timerState.lastReminderCount = intervalCount;
               playChime(false);
               const reminderBody = `${taskNotificationPrefix(timerState.taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
+              showDesktopNotification(`${currentHeadingAppType} timer reminder`, reminderBody);
               status.textContent = `Reminder: ${reminderBody}`;
               saveState();
             }
@@ -861,6 +875,12 @@
 
           if (remainingSeconds <= 0) {
             playChime(true);
+            if (!hasActiveServiceWorkerController) {
+              showDesktopNotification(
+                `${currentHeadingAppType} timer complete`,
+                `${taskNotificationPrefix(timerState.taskName)}Time is up. Great work finishing your session!`
+              );
+            }
             status.textContent = 'Session complete.';
             clearInterval(tickHandle);
             tickHandle = null;
