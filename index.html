@@ -18,11 +18,11 @@
         margin: 0;
         min-height: 100vh;
         display: grid;
-        place-items: center;
+        place-items: start center;
         font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
         background: #0f1115;
         color: #e6e7eb;
-        padding: 16px;
+        padding: 32px 16px;
       }
 
       .app {
@@ -262,8 +262,113 @@
         border: 0;
       }
 
+      .layout-container {
+        display: grid;
+        grid-template-columns: minmax(0, 520px) minmax(0, 420px);
+        gap: 24px;
+        width: 100%;
+        max-width: 980px;
+        align-items: start;
+      }
+
+      .history-panel {
+        background: #171a21;
+        border: 1px solid #2a2f3a;
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.35);
+      }
+
+      .history-heading {
+        margin: 0 0 16px;
+        text-align: center;
+        font-size: clamp(1.1rem, 2vw, 1.4rem);
+        font-weight: 600;
+      }
+
+      .history-date-label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.92rem;
+        color: #c4c9d4;
+        margin-bottom: 16px;
+      }
+
+      .history-list {
+        max-height: 480px;
+        overflow-y: auto;
+        display: grid;
+        gap: 10px;
+      }
+
+      .history-empty {
+        color: #7f889c;
+        font-size: 0.93rem;
+        text-align: center;
+        padding: 24px 0;
+        margin: 0;
+      }
+
+      .session-card {
+        background: #1c2030;
+        border-radius: 10px;
+        padding: 14px 16px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .session-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .session-card-title {
+        font-weight: 600;
+        font-size: 0.97rem;
+        color: #e6e7eb;
+      }
+
+      .session-card-task {
+        font-size: 0.88rem;
+        color: #aeb6c6;
+      }
+
+      .session-card-duration {
+        font-size: 0.88rem;
+        color: #8b93a7;
+      }
+
+      .session-badge {
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 999px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .session-badge-completed {
+        background: rgba(34, 197, 94, 0.15);
+        color: #22c55e;
+      }
+
+      .session-badge-stopped {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+      }
+
+      @media (max-width: 899px) {
+        .layout-container {
+          grid-template-columns: 1fr;
+          max-width: 520px;
+        }
+      }
+
       @media (max-width: 480px) {
-        .app {
+        .app,
+        .history-panel {
           padding: 18px;
         }
 
@@ -275,6 +380,7 @@
     </style>
   </head>
   <body>
+    <div class="layout-container">
     <main class="app">
       <div class="title-row">
         <h1 id="appTitle">Homework Timer</h1>
@@ -342,6 +448,17 @@
 
       <p id="status" class="status" aria-live="polite"></p>
     </main>
+
+    <aside class="history-panel">
+      <h2 class="history-heading">Session History</h2>
+      <label for="historyDate" class="history-date-label">
+        Date
+        <input id="historyDate" type="date" />
+      </label>
+      <div id="historyList" class="history-list"></div>
+    </aside>
+    </div>
+
     <button id="notificationToggleButton" type="button" class="btn-secondary notification-toggle">Subscribe to Alerts</button>
 
     <script>
@@ -378,6 +495,8 @@
         const meta = document.getElementById('meta');
         const status = document.getElementById('status');
         const notificationToggleButton = document.getElementById('notificationToggleButton');
+        const historyDateInput = document.getElementById('historyDate');
+        const historyList = document.getElementById('historyList');
 
         let timerState = null;
         let tickHandle = null;
@@ -393,6 +512,133 @@
           : null;
 
         const shouldReduceMotion = () => Boolean(prefersReducedMotionQuery && prefersReducedMotionQuery.matches);
+
+        const toLocalDateString = (timestamp) => {
+          const d = new Date(timestamp);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        };
+
+        const getTodayDateString = () => toLocalDateString(Date.now());
+
+        let historyDBPromise = null;
+
+        const openHistoryDB = () => {
+          if (historyDBPromise) return historyDBPromise;
+          historyDBPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open('homeworkTimerHistory', 1);
+            request.onupgradeneeded = (event) => {
+              const db = event.target.result;
+              if (!db.objectStoreNames.contains('sessions')) {
+                const store = db.createObjectStore('sessions', { keyPath: 'id', autoIncrement: true });
+                store.createIndex('date', 'date', { unique: false });
+              }
+            };
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = (event) => {
+              historyDBPromise = null;
+              reject(event.target.error);
+            };
+          });
+          return historyDBPromise;
+        };
+
+        const saveSessionRecord = async (record) => {
+          try {
+            const db = await openHistoryDB();
+            await new Promise((resolve, reject) => {
+              const tx = db.transaction('sessions', 'readwrite');
+              const rejectTransaction = (event, fallbackMessage) => {
+                reject(tx.error || event.target.error || new Error(fallbackMessage));
+              };
+              tx.objectStore('sessions').add(record);
+              tx.oncomplete = () => resolve();
+              tx.onerror = (event) => rejectTransaction(event, 'Failed to save session record.');
+              tx.onabort = (event) => rejectTransaction(event, 'Session record transaction was aborted.');
+            });
+            await loadHistoryForSelectedDate();
+          } catch {
+            // IndexedDB unavailable — continue without history
+          }
+        };
+
+        const getSessionsByDate = async (dateString) => {
+          try {
+            const db = await openHistoryDB();
+            return new Promise((resolve, reject) => {
+              const tx = db.transaction('sessions', 'readonly');
+              const index = tx.objectStore('sessions').index('date');
+              const request = index.getAll(dateString);
+              request.onsuccess = () => resolve(request.result || []);
+              request.onerror = (event) => reject(event.target.error);
+            });
+          } catch {
+            return [];
+          }
+        };
+
+        const computeElapsedSeconds = (state) => {
+          if (state.isPaused || !state.endTime) {
+            return state.totalSeconds - state.remainingSeconds;
+          }
+          const remaining = Math.max(0, Math.ceil((state.endTime - Date.now()) / 1000));
+          return state.totalSeconds - remaining;
+        };
+
+        const getSessionAppType = (state) =>
+          typeof state.headingAppType === 'string' && state.headingAppType
+            ? state.headingAppType
+            : currentHeadingAppType;
+
+        const createSessionRecord = (state, elapsedSeconds, completedFully, endTime) => ({
+          appType: getSessionAppType(state),
+          taskName: state.taskName || '',
+          totalSeconds: state.totalSeconds,
+          elapsedSeconds,
+          date: toLocalDateString(state.startTime),
+          startTime: state.startTime,
+          endTime: endTime != null ? endTime : Date.now(),
+          completedFully,
+        });
+
+        const formatDuration = (seconds) => {
+          const safe = Math.max(0, seconds);
+          const hrs = Math.floor(safe / 3600);
+          const mins = Math.floor((safe % 3600) / 60);
+          const secs = safe % 60;
+          if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`;
+          return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        };
+
+        const escapeHtml = (str) => {
+          const div = document.createElement('div');
+          div.textContent = str;
+          return div.innerHTML;
+        };
+
+        const renderHistory = (sessions) => {
+          if (!sessions.length) {
+            historyList.innerHTML = '<p class="history-empty">No sessions recorded for this date.</p>';
+            return;
+          }
+          const sorted = sessions.slice().sort((a, b) => b.startTime - a.startTime);
+          historyList.innerHTML = sorted.map((s) => `
+            <div class="session-card">
+              <div class="session-card-header">
+                <span class="session-card-title">${escapeHtml(s.appType)} Timer</span>
+                <span class="session-badge ${s.completedFully ? 'session-badge-completed' : 'session-badge-stopped'}">${s.completedFully ? 'Completed' : 'Stopped'}</span>
+              </div>
+              ${s.taskName ? `<span class="session-card-task">${escapeHtml(s.taskName)}</span>` : ''}
+              <span class="session-card-duration">Duration: ${formatDuration(s.elapsedSeconds)} / ${formatDuration(s.totalSeconds)}</span>
+            </div>
+          `).join('');
+        };
+
+        const loadHistoryForSelectedDate = async () => {
+          const dateStr = historyDateInput.value;
+          if (!dateStr) return;
+          const sessions = await getSessionsByDate(dateStr);
+          renderHistory(sessions);
+        };
 
         const normalizeAppType = (value) => {
           if (typeof value !== 'string') {
@@ -461,6 +707,7 @@
 
             if (data.type === 'TIMER_COMPLETE') {
               if (timerState) {
+                saveSessionRecord(createSessionRecord(timerState, timerState.totalSeconds, true));
                 if (document.visibilityState === 'visible') {
                   playChime(true);
                 }
@@ -878,6 +1125,7 @@
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
 
           if (remainingSeconds <= 0) {
+            saveSessionRecord(createSessionRecord(timerState, timerState.totalSeconds, true));
             if (document.visibilityState === 'visible') {
               playChime(true);
             }
@@ -923,6 +1171,10 @@
             ? timerState.breakRemainingSeconds
             : 0;
           timerState.taskName = normalizeTaskName(timerState.taskName);
+          timerState.headingAppType =
+            typeof timerState.headingAppType === 'string' && timerState.headingAppType
+              ? timerState.headingAppType
+              : currentHeadingAppType;
           timerState.remainingSeconds = Number.isInteger(timerState.remainingSeconds)
             ? timerState.remainingSeconds
             : timerState.totalSeconds;
@@ -982,6 +1234,7 @@
             }
 
             if (!parsed.isPaused && Date.now() >= parsed.endTime) {
+              saveSessionRecord(createSessionRecord(parsed, parsed.totalSeconds, true, parsed.endTime));
               status.textContent = 'Session complete while tab was closed.';
               showDesktopNotification(
                 `${currentHeadingAppType} timer complete`,
@@ -1087,6 +1340,7 @@
             remainingSeconds: totalSeconds,
             lastReminderCount: 0,
             taskName,
+            headingAppType: currentHeadingAppType,
             isPaused: false,
             isBreakActive: false,
             breakEndTime: null,
@@ -1181,6 +1435,9 @@
         });
 
         resetButton.addEventListener('click', () => {
+          if (timerState) {
+            saveSessionRecord(createSessionRecord(timerState, computeElapsedSeconds(timerState), false));
+          }
           clearInterval(tickHandle);
           tickHandle = null;
           postTimerStateToServiceWorker('RESET_TIMER');
@@ -1204,7 +1461,10 @@
         loadNotificationPreference();
         updateNotificationToggleButton();
         void requestDesktopNotificationPermissionOnLoad();
+        historyDateInput.value = getTodayDateString();
+        historyDateInput.addEventListener('change', loadHistoryForSelectedDate);
         restoreTimer();
+        loadHistoryForSelectedDate();
       })();
     </script>
   </body>
