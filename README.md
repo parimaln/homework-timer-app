@@ -12,6 +12,9 @@ A plain HTML + JavaScript homework timer designed for GitHub Pages.
 - Break length validation (max 10 minutes and never longer than remaining time)
 - Timer state persisted in `localStorage` and restored on refresh
 - Service worker powered background reminders/completion notifications when supported; after tab close, delivery is best-effort and browser-dependent rather than guaranteed
+- Floating bottom-right subscribe/unsubscribe alerts button for notification opt-in/out (mobile-friendly)
+- iOS web push follows Apple requirements (iOS 16.4+, HTTPS, and Add to Home Screen)
+- On desktop, notification permission is requested on page load instead of waiting for timer start
 - If a notification is shown, clicking it focuses an existing timer tab or opens the app
 - Desktop notifications + audible chime on reminders and completion while app is open
 - Reminder/completion notifications can include the current task name

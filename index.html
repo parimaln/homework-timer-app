@@ -230,6 +230,26 @@
         display: none;
       }
 
+      .notification-toggle {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 20;
+        width: auto;
+        max-width: calc(100vw - 32px);
+        padding: 10px 14px;
+      }
+
+      .notification-toggle[data-subscribed='true'] {
+        background: #3a1a1a;
+        border-color: #6b2626;
+        color: #f87171;
+      }
+
+      .notification-toggle[data-subscribed='true']:hover {
+        background: #4d2020;
+      }
+
       .sr-only {
         position: absolute;
         width: 1px;
@@ -245,6 +265,11 @@
       @media (max-width: 480px) {
         .app {
           padding: 18px;
+        }
+
+        .notification-toggle {
+          right: 12px;
+          bottom: 12px;
         }
       }
     </style>
@@ -317,12 +342,15 @@
 
       <p id="status" class="status" aria-live="polite"></p>
     </main>
+    <button id="notificationToggleButton" type="button" class="btn-secondary notification-toggle">Subscribe to Alerts</button>
 
     <script>
       (() => {
         const STORAGE_KEY = 'homeworkTimerState';
         const APP_TYPE_STORAGE_KEY = 'homeworkTimerAppType';
+        const NOTIFICATION_PREF_STORAGE_KEY = 'homeworkTimerNotificationsEnabled';
         const SERVICE_WORKER_PATH = './service-worker.js';
+        const MAX_MOBILE_VIEWPORT_WIDTH = 1024;
         const MAX_BREAK_MINUTES = 10;
         const APP_TYPE_MAX_LENGTH = 40;
         const APP_TYPE_EXAMPLE_ROTATION_MS = 3200;
@@ -349,6 +377,7 @@
         const countdown = document.getElementById('countdown');
         const meta = document.getElementById('meta');
         const status = document.getElementById('status');
+        const notificationToggleButton = document.getElementById('notificationToggleButton');
 
         let timerState = null;
         let tickHandle = null;
@@ -356,6 +385,8 @@
         let serviceWorkerReady = Promise.resolve(null);
         let appTypeExampleIndex = 0;
         let currentHeadingAppType = DEFAULT_APP_TYPE;
+        let alertsEnabled = false;
+        let hasStoredNotificationPreference = false;
         const prefersReducedMotionQuery = window.matchMedia
           ? window.matchMedia('(prefers-reduced-motion: reduce)')
           : null;
@@ -525,7 +556,7 @@
         const taskNotificationPrefix = (taskName) => (taskName ? `Task: ${taskName}. ` : '');
 
         const showDesktopNotification = (title, body) => {
-          if (!('Notification' in window) || Notification.permission !== 'granted') {
+          if (!alertsEnabled || !('Notification' in window) || Notification.permission !== 'granted') {
             return;
           }
           try {
@@ -577,6 +608,7 @@
                       endTime: timerState.endTime,
                       lastReminderCount: timerState.lastReminderCount,
                       taskName: timerState.taskName,
+                      notificationsEnabled: alertsEnabled,
                     }
                   : null,
               });
@@ -585,6 +617,138 @@
               // Service worker unavailable — continue without background notifications
             });
         };
+
+        const isLikelyMobileDevice = () => {
+          const userAgent = navigator.userAgent || '';
+          const hasMobileUserAgent = /Mobi|Android|iPhone|iPad|iPod/i.test(userAgent);
+          const hasTouch = 'ontouchstart' in window;
+          return hasMobileUserAgent || (hasTouch && navigator.maxTouchPoints > 1 && window.innerWidth <= MAX_MOBILE_VIEWPORT_WIDTH);
+        };
+
+        const loadNotificationPreference = () => {
+          try {
+            const storedPreference = localStorage.getItem(NOTIFICATION_PREF_STORAGE_KEY);
+            hasStoredNotificationPreference = storedPreference !== null;
+            alertsEnabled = storedPreference === null ? true : storedPreference === 'true';
+          } catch {
+            alertsEnabled = true;
+            hasStoredNotificationPreference = false;
+          }
+        };
+
+        const saveNotificationPreference = () => {
+          hasStoredNotificationPreference = true;
+          try {
+            localStorage.setItem(NOTIFICATION_PREF_STORAGE_KEY, String(alertsEnabled));
+          } catch {
+            // Storage unavailable — keep preference in-memory only
+          }
+        };
+
+        const updateNotificationToggleButton = () => {
+          if (!notificationToggleButton) {
+            return;
+          }
+
+          if (!('Notification' in window)) {
+            notificationToggleButton.textContent = 'Alerts Unavailable';
+            notificationToggleButton.disabled = true;
+            notificationToggleButton.dataset.subscribed = 'false';
+            notificationToggleButton.setAttribute('aria-pressed', 'false');
+            return;
+          }
+
+          const isSubscribed = alertsEnabled && Notification.permission === 'granted';
+          notificationToggleButton.textContent = isSubscribed ? 'Unsubscribe from Alerts' : 'Subscribe to Alerts';
+          notificationToggleButton.dataset.subscribed = isSubscribed ? 'true' : 'false';
+          notificationToggleButton.setAttribute('aria-pressed', isSubscribed ? 'true' : 'false');
+          notificationToggleButton.disabled = false;
+        };
+
+        const syncNotificationPreferenceToServiceWorker = () => {
+          if (!timerState) {
+            return;
+          }
+          postTimerStateToServiceWorker('START_TIMER');
+        };
+
+        const hasExplicitNotificationOptOut = () => hasStoredNotificationPreference === true && alertsEnabled === false;
+
+        const isServiceWorkerControllingPage = () => 'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller);
+
+        const requestDesktopNotificationPermissionOnLoad = async () => {
+          if (
+            !('Notification' in window) ||
+            Notification.permission !== 'default' ||
+            isLikelyMobileDevice() ||
+            hasExplicitNotificationOptOut()
+          ) {
+            return;
+          }
+
+          try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted' && !hasStoredNotificationPreference) {
+              alertsEnabled = true;
+              saveNotificationPreference();
+            }
+          } catch {
+            // Permission prompt unavailable — continue with default behavior
+          } finally {
+            updateNotificationToggleButton();
+          }
+        };
+
+        notificationToggleButton.addEventListener('click', async () => {
+          if (!('Notification' in window)) {
+            return;
+          }
+
+          const isSubscribed = alertsEnabled && Notification.permission === 'granted';
+          if (isSubscribed) {
+            alertsEnabled = false;
+            saveNotificationPreference();
+            updateNotificationToggleButton();
+            syncNotificationPreferenceToServiceWorker();
+            status.textContent = 'Alerts unsubscribed.';
+            return;
+          }
+
+          if (Notification.permission === 'granted') {
+            alertsEnabled = true;
+            saveNotificationPreference();
+            updateNotificationToggleButton();
+            syncNotificationPreferenceToServiceWorker();
+            status.textContent = 'Alerts subscribed.';
+            return;
+          }
+
+          if (Notification.permission === 'denied') {
+            alertsEnabled = false;
+            saveNotificationPreference();
+            status.textContent = 'Notifications are blocked by your browser settings.';
+            updateNotificationToggleButton();
+            syncNotificationPreferenceToServiceWorker();
+            return;
+          }
+
+          try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+              alertsEnabled = true;
+              saveNotificationPreference();
+              status.textContent = 'Alerts subscribed.';
+            } else {
+              alertsEnabled = false;
+              saveNotificationPreference();
+              status.textContent = 'Notification permission was not granted.';
+            }
+          } catch {
+            status.textContent = 'Notification permission prompt failed.';
+          }
+          updateNotificationToggleButton();
+          syncNotificationPreferenceToServiceWorker();
+        });
 
         const playChime = (isFinal) => {
           const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -690,18 +854,20 @@
 
           const remainingSeconds = Math.max(0, Math.ceil((timerState.endTime - now) / 1000));
           const elapsedSeconds = timerState.totalSeconds - remainingSeconds;
+          const hasActiveServiceWorkerController = isServiceWorkerControllingPage();
 
           timerState.remainingSeconds = remainingSeconds;
           countdown.textContent = toDisplay(remainingSeconds);
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
 
           // In-page reminder fallback: fires when the service worker is not controlling the page
-          if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+          if (!hasActiveServiceWorkerController) {
             const intervalCount = Math.floor(elapsedSeconds / timerState.intervalSeconds);
             if (intervalCount > timerState.lastReminderCount) {
               timerState.lastReminderCount = intervalCount;
               playChime(false);
               const reminderBody = `${taskNotificationPrefix(timerState.taskName)}${toMinutesText(elapsedSeconds)} elapsed, ${toMinutesText(remainingSeconds)} remaining.`;
+              showDesktopNotification(`${currentHeadingAppType} timer reminder`, reminderBody);
               status.textContent = `Reminder: ${reminderBody}`;
               saveState();
             }
@@ -709,6 +875,12 @@
 
           if (remainingSeconds <= 0) {
             playChime(true);
+            if (!hasActiveServiceWorkerController) {
+              showDesktopNotification(
+                `${currentHeadingAppType} timer complete`,
+                `${taskNotificationPrefix(timerState.taskName)}Time is up. Great work finishing your session!`
+              );
+            }
             status.textContent = 'Session complete.';
             clearInterval(tickHandle);
             tickHandle = null;
@@ -881,14 +1053,6 @@
             }
           }
 
-          if ('Notification' in window && Notification.permission === 'default') {
-            try {
-              await Notification.requestPermission();
-            } catch {
-              status.textContent = 'Notification permission prompt failed. Timer will still run with chime alerts.';
-            }
-          }
-
           const totalSeconds = totalMinutes * 60;
           const intervalSeconds = intervalMinutes * 60;
           const now = Date.now();
@@ -1003,6 +1167,9 @@
           showSetup();
         });
 
+        loadNotificationPreference();
+        updateNotificationToggleButton();
+        void requestDesktopNotificationPermissionOnLoad();
         restoreTimer();
       })();
     </script>
