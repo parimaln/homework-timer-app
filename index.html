@@ -230,6 +230,26 @@
         display: none;
       }
 
+      .notification-toggle {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 20;
+        width: auto;
+        max-width: calc(100vw - 32px);
+        padding: 10px 14px;
+      }
+
+      .notification-toggle[data-subscribed='true'] {
+        background: #3a1a1a;
+        border-color: #6b2626;
+        color: #f87171;
+      }
+
+      .notification-toggle[data-subscribed='true']:hover {
+        background: #4d2020;
+      }
+
       .sr-only {
         position: absolute;
         width: 1px;
@@ -245,6 +265,11 @@
       @media (max-width: 480px) {
         .app {
           padding: 18px;
+        }
+
+        .notification-toggle {
+          right: 12px;
+          bottom: 12px;
         }
       }
     </style>
@@ -317,11 +342,13 @@
 
       <p id="status" class="status" aria-live="polite"></p>
     </main>
+    <button id="notificationToggleButton" type="button" class="btn-secondary notification-toggle">Subscribe to Alerts</button>
 
     <script>
       (() => {
         const STORAGE_KEY = 'homeworkTimerState';
         const APP_TYPE_STORAGE_KEY = 'homeworkTimerAppType';
+        const NOTIFICATION_PREF_STORAGE_KEY = 'homeworkTimerNotificationsEnabled';
         const SERVICE_WORKER_PATH = './service-worker.js';
         const MAX_BREAK_MINUTES = 10;
         const APP_TYPE_MAX_LENGTH = 40;
@@ -349,6 +376,7 @@
         const countdown = document.getElementById('countdown');
         const meta = document.getElementById('meta');
         const status = document.getElementById('status');
+        const notificationToggleButton = document.getElementById('notificationToggleButton');
 
         let timerState = null;
         let tickHandle = null;
@@ -356,6 +384,7 @@
         let serviceWorkerReady = Promise.resolve(null);
         let appTypeExampleIndex = 0;
         let currentHeadingAppType = DEFAULT_APP_TYPE;
+        let alertsEnabled = true;
         const prefersReducedMotionQuery = window.matchMedia
           ? window.matchMedia('(prefers-reduced-motion: reduce)')
           : null;
@@ -525,7 +554,7 @@
         const taskNotificationPrefix = (taskName) => (taskName ? `Task: ${taskName}. ` : '');
 
         const showDesktopNotification = (title, body) => {
-          if (!('Notification' in window) || Notification.permission !== 'granted') {
+          if (!alertsEnabled || !('Notification' in window) || Notification.permission !== 'granted') {
             return;
           }
           try {
@@ -577,6 +606,7 @@
                       endTime: timerState.endTime,
                       lastReminderCount: timerState.lastReminderCount,
                       taskName: timerState.taskName,
+                      notificationsEnabled: alertsEnabled,
                     }
                   : null,
               });
@@ -585,6 +615,123 @@
               // Service worker unavailable — continue without background notifications
             });
         };
+
+        const isLikelyMobileDevice = () => {
+          const userAgent = navigator.userAgent || '';
+          if (/Mobi|Android|iPhone|iPad|iPod/i.test(userAgent)) {
+            return true;
+          }
+          return navigator.maxTouchPoints > 1 && window.innerWidth <= 1024;
+        };
+
+        const loadNotificationPreference = () => {
+          try {
+            alertsEnabled = localStorage.getItem(NOTIFICATION_PREF_STORAGE_KEY) !== '0';
+          } catch {
+            alertsEnabled = true;
+          }
+        };
+
+        const saveNotificationPreference = () => {
+          try {
+            localStorage.setItem(NOTIFICATION_PREF_STORAGE_KEY, alertsEnabled ? '1' : '0');
+          } catch {
+            // Storage unavailable — keep preference in-memory only
+          }
+        };
+
+        const updateNotificationToggleButton = () => {
+          if (!notificationToggleButton) {
+            return;
+          }
+
+          if (!('Notification' in window)) {
+            notificationToggleButton.textContent = 'Alerts Unavailable';
+            notificationToggleButton.disabled = true;
+            notificationToggleButton.dataset.subscribed = 'false';
+            notificationToggleButton.setAttribute('aria-pressed', 'false');
+            return;
+          }
+
+          const isSubscribed = alertsEnabled && Notification.permission === 'granted';
+          notificationToggleButton.textContent = isSubscribed ? 'Unsubscribe Alerts' : 'Subscribe to Alerts';
+          notificationToggleButton.dataset.subscribed = isSubscribed ? 'true' : 'false';
+          notificationToggleButton.setAttribute('aria-pressed', isSubscribed ? 'true' : 'false');
+          notificationToggleButton.disabled = false;
+        };
+
+        const syncNotificationPreferenceToServiceWorker = () => {
+          if (!timerState) {
+            return;
+          }
+          postTimerStateToServiceWorker('START_TIMER');
+        };
+
+        const requestDesktopNotificationPermissionOnLoad = async () => {
+          if (!('Notification' in window) || Notification.permission !== 'default' || isLikelyMobileDevice()) {
+            return;
+          }
+
+          try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+              alertsEnabled = true;
+              saveNotificationPreference();
+            }
+          } catch {
+            // Permission prompt unavailable — continue with default behavior
+          } finally {
+            updateNotificationToggleButton();
+          }
+        };
+
+        notificationToggleButton.addEventListener('click', async () => {
+          if (!('Notification' in window)) {
+            return;
+          }
+
+          const isSubscribed = alertsEnabled && Notification.permission === 'granted';
+          if (isSubscribed) {
+            alertsEnabled = false;
+            saveNotificationPreference();
+            updateNotificationToggleButton();
+            syncNotificationPreferenceToServiceWorker();
+            status.textContent = 'Alerts unsubscribed.';
+            return;
+          }
+
+          if (Notification.permission === 'granted') {
+            alertsEnabled = true;
+            saveNotificationPreference();
+            updateNotificationToggleButton();
+            syncNotificationPreferenceToServiceWorker();
+            status.textContent = 'Alerts subscribed.';
+            return;
+          }
+
+          if (Notification.permission === 'denied') {
+            status.textContent = 'Notifications are blocked by your browser settings.';
+            updateNotificationToggleButton();
+            return;
+          }
+
+          try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+              alertsEnabled = true;
+              saveNotificationPreference();
+              status.textContent = 'Alerts subscribed.';
+            } else {
+              alertsEnabled = false;
+              saveNotificationPreference();
+              status.textContent = 'Notification permission was not granted.';
+            }
+          } catch {
+            status.textContent = 'Notification permission prompt failed.';
+          }
+          updateNotificationToggleButton();
+          syncNotificationPreferenceToServiceWorker();
+        });
 
         const playChime = (isFinal) => {
           const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -881,14 +1028,6 @@
             }
           }
 
-          if ('Notification' in window && Notification.permission === 'default') {
-            try {
-              await Notification.requestPermission();
-            } catch {
-              status.textContent = 'Notification permission prompt failed. Timer will still run with chime alerts.';
-            }
-          }
-
           const totalSeconds = totalMinutes * 60;
           const intervalSeconds = intervalMinutes * 60;
           const now = Date.now();
@@ -1003,6 +1142,9 @@
           showSetup();
         });
 
+        loadNotificationPreference();
+        updateNotificationToggleButton();
+        void requestDesktopNotificationPermissionOnLoad();
         restoreTimer();
       })();
     </script>

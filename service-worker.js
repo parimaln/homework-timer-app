@@ -31,6 +31,8 @@ const normalizeTaskName = (value) => {
   return value.trim().slice(0, 120);
 };
 
+const normalizeNotificationsEnabled = (value) => value !== false;
+
 const taskNotificationPrefix = (taskName) => (taskName ? `Task: ${taskName}. ` : '');
 
 const getAppUrl = () => self.registration.scope;
@@ -147,10 +149,12 @@ const processTimerEvents = async () => {
 
   const now = Date.now();
   if (now >= timerState.endTime) {
-    try {
-      await showCompletionNotification(timerState.taskName);
-    } catch {
-      // Notification permission denied or unavailable — continue with state cleanup
+    if (timerState.notificationsEnabled !== false) {
+      try {
+        await showCompletionNotification(timerState.taskName);
+      } catch {
+        // Notification permission denied or unavailable — continue with state cleanup
+      }
     }
     await clearTimerState();
     await broadcastToClients({
@@ -168,10 +172,12 @@ const processTimerEvents = async () => {
   if (intervalCount > timerState.lastReminderCount) {
     timerState.lastReminderCount = intervalCount;
     await writeTimerState(timerState);
-    try {
-      await showReminderNotification(elapsedSeconds, remainingSeconds, timerState.taskName);
-    } catch {
-      // Notification permission denied or unavailable — continue with broadcast
+    if (timerState.notificationsEnabled !== false) {
+      try {
+        await showReminderNotification(elapsedSeconds, remainingSeconds, timerState.taskName);
+      } catch {
+        // Notification permission denied or unavailable — continue with broadcast
+      }
     }
     await broadcastToClients({
       type: 'TIMER_REMINDER',
@@ -197,6 +203,7 @@ const normalizeTimerState = (input) => {
   const endTime = Number(input.endTime);
   const lastReminderCount = Number(input.lastReminderCount);
   const taskName = normalizeTaskName(input.taskName);
+  const notificationsEnabled = normalizeNotificationsEnabled(input.notificationsEnabled);
 
   if (
     !Number.isFinite(totalSeconds) ||
@@ -222,6 +229,7 @@ const normalizeTimerState = (input) => {
     startTime,
     endTime,
     taskName,
+    notificationsEnabled,
     lastReminderCount:
       Number.isFinite(lastReminderCount) && Number.isInteger(lastReminderCount) && lastReminderCount >= 0
         ? lastReminderCount
