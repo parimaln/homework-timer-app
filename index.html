@@ -549,12 +549,13 @@
 
         const updateDocumentTitle = (remainingSeconds) => {
           const mins = Math.ceil(remainingSeconds / 60);
-          if (mins === lastTitleMinute) {
+          const label = mins === 1 ? 'min' : 'mins';
+          const nextTitle = `${mins} ${label} remaining: ${currentHeadingAppType} Timer`;
+          if (mins === lastTitleMinute && document.title === nextTitle) {
             return;
           }
           lastTitleMinute = mins;
-          const label = mins === 1 ? 'min' : 'mins';
-          document.title = `${mins} ${label} remaining: ${currentHeadingAppType} Timer`;
+          document.title = nextTitle;
         };
 
         const resetDocumentTitle = () => {
@@ -875,7 +876,6 @@
           timerState.remainingSeconds = remainingSeconds;
           countdown.textContent = toDisplay(remainingSeconds);
           meta.textContent = `Elapsed: ${toMinutesText(elapsedSeconds)} • Remaining: ${toMinutesText(remainingSeconds)}`;
-          updateDocumentTitle(remainingSeconds);
 
           if (remainingSeconds <= 0) {
             if (document.visibilityState === 'visible') {
@@ -893,6 +893,8 @@
             showSetup();
             return;
           }
+
+          updateDocumentTitle(remainingSeconds);
 
           // Always track reminders in-page; the service worker setTimeout may not
           // survive when the browser idles the worker after a tab switch or close.
